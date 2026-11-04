@@ -1177,7 +1177,17 @@ function renderRemote(widget, { cacheKey, load, view, refreshMs, onError }) {
 
   return h("div", { class: "google-widget" },
     toolbar,
-    current?.error ? h("p", { class: "google-error" }, current.error) : null,
+    current?.error ? h("div", { class: "google-error" },
+      h("p", {}, current.error),
+      current.errorLink && safeUrl(current.errorLink.url)
+        ? h("a", {
+          class: "google-error__link",
+          href: safeUrl(current.errorLink.url),
+          target: "_blank",
+          rel: "noopener noreferrer",
+        }, current.errorLink.label)
+        : null,
+    ) : null,
     content,
   );
 }
@@ -1188,8 +1198,10 @@ async function loadRemote(widget, key, load, onError) {
   try {
     entry.data = await load();
     entry.error = null;
+    entry.errorLink = null;
   } catch (err) {
     entry.error = err.message;
+    entry.errorLink = err.link || null;
     onError?.(err);
   }
   entry.fetchedAt = Date.now();

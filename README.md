@@ -779,6 +779,8 @@ Firestore の `dashboards/{ユーザー ID}` ドキュメントに、次の形�
 | 手順 8 の制限をかけたらログインや保存ができなくなった | 許可したサイトに `<ユーザー名>.github.io` と `<プロジェクト ID>.firebaseapp.com` の両方があるか、API の制限に 3 つの API が入っているか |
 | 「〇〇 ではこのダッシュボードを使えません」 | 手順 4 のルールの `allowedEmails()` にそのアドレスが**小文字で**入っているか、ルールを**公開**したか |
 | 「Firestore のデータベースが見つかりません」 | 手順 4 で Firestore Database を作成したか |
+| カレンダー・Gmail のウィジェットに「Google Cloud で『Google Calendar API』（または『Gmail API』）が有効になっていません」 | 表示されたリンクを開き、Firebase と同じプロジェクトで **有効にする** を押す（手順 9）。反映に数分かかるので、待ってから ↻ |
+| カレンダー・Gmail のウィジェットに「必要な権限が許可されていません」 | 手順 9 の 3 で権限（スコープ）を追加したか。追加後は「連携し直す」で、確認画面のチェックをすべて入れて許可する |
 | 「ポップアップがブロックされました」 | ブラウザでこのサイトのポップアップを許可して、もう一度ログイン |
 | 変更が反映されない | Actions タブで最新の「Deploy to GitHub Pages」が成功しているか確認し、キャッシュを無視して再読み込み（Mac は ⌘⇧R、Windows は Ctrl+Shift+R）。GitHub Pages のファイルはブラウザに最大 10 分ほどキャッシュされます |
 | GitHub から「Publicly leaked secret」の警告が届いた | 下の「GitHub から『Publicly leaked secret』の警告が届いたとき」を参照 |
