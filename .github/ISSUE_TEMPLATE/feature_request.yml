@@ -1,0 +1,63 @@
+name: 要望・アイデア / Feature request
+description: 新しい機能やウィジェット、改善のアイデアはこちら / Suggest a new feature, widget, or improvement
+title: "[Request] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        アイデアありがとうございます。「こんなことに困っている」だけでも大歓迎です。
+        Thanks for the idea! Even just describing what bothers you is very welcome.
+
+        > ⚠️ Issue は誰でも見られます。人に見せたくない情報は書かないでください。
+        > Issues are public. Please don't include anything private.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 種類 / Type
+      options:
+        - 新しいウィジェット / New widget
+        - 今あるウィジェットの改善 / Improve an existing widget
+        - 画面・操作の改善 / UI or usability
+        - 見た目・テーマ / Appearance & themes
+        - 言語・翻訳 / Language & translation
+        - セットアップ・ドキュメント / Setup & docs
+        - その他 / Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 困っていること・やりたいこと / What problem would this solve?
+      description: どんな場面で、何がしたいか / When does it come up, and what do you want to do?
+      placeholder: 例：毎朝その日の ToDo を確認しているが、期限のある ToDo がどれかわからない
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: こうなるといい / Your idea
+      description: こんな機能・見た目だとうれしい、という案（あれば）/ How you imagine it could work (if you have an idea)
+      placeholder: 例：ToDo に期限を付けられて、期限が近いものが上に並ぶ
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 今はどうしているか / Current workaround
+      description: 今のところの代わりの方法（あれば）/ How you deal with it today (if any)
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: addon
+    attributes:
+      label: アドオン / Add-on
+      description: 自作ウィジェットは「アドオン」として自分で足すこともできます（WIDGET.md）/ Custom widgets can also be built as add-ons (see WIDGET.md)
+      options:
+        - label: アドオンとして自分で作ってみたい（作り方の相談も歓迎）/ I'd like to try building it as an add-on
+          required: false
