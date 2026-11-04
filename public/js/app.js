@@ -362,6 +362,13 @@ function renderTabs() {
           "aria-label": `タブ「${p.name}」の名前を変える`,
           onclick: () => renamePage(p),
         }, "✎"),
+        h("button", {
+          type: "button",
+          class: "button button--small button--ghost",
+          title: "タブを複製",
+          "aria-label": `タブ「${p.name}」を複製`,
+          onclick: () => duplicatePage(p),
+        }, "⧉"),
         state.pages.length > 1 ? h("button", {
           type: "button",
           class: "button button--small button--ghost button--danger",
@@ -373,10 +380,31 @@ function renderTabs() {
     );
     list.append(item);
   }
+  // 「＋ タブを追加」は、いちばん右のタブのすぐ右に置く
   el.tabs.replaceChildren(list);
   if (editing) {
     el.tabs.append(h("button", { type: "button", class: "tabs__add", onclick: addPage }, "＋ タブを追加"));
   }
+}
+
+/**
+ * タブを複製する。ウィジェットは中身ごとコピーし、ID だけ新しくする
+ * （タイマーの状態や読み込みの控えなど、ウィジェットの ID で区別しているものが混ざらないように）。
+ * 複製したタブは元のタブのすぐ右に入れて、開く。
+ */
+function duplicatePage(p) {
+  const names = new Set(state.pages.map((x) => x.name));
+  let name = `${p.name} のコピー`;
+  for (let n = 2; names.has(name); n += 1) name = `${p.name} のコピー ${n}`;
+  const copy = {
+    id: uid(),
+    name,
+    widgets: JSON.parse(JSON.stringify(p.widgets)).map((w) => ({ ...w, id: uid() })),
+  };
+  state.pages.splice(state.pages.findIndex((x) => x.id === p.id) + 1, 0, copy);
+  scheduleSave();
+  switchPage(copy.id);
+  showToast(`タブ「${p.name}」を複製しました`);
 }
 
 /** 矢印キーでタブを移動（WAI-ARIA のタブの操作） */
@@ -686,20 +714,47 @@ function renderIcon(item, url, title) {
   const letter = () =>
     h("span", { class: "link__icon link__icon--letter", "aria-hidden": "true" }, (title || "?").trim().charAt(0).toUpperCase());
 
-  const imageSrc = icon && safeUrl(icon)
-    ? safeUrl(icon)
-    : !icon && state.settings.useFavicons && /^https?:/.test(url) && hostname(url)
-      ? FAVICON_URL.replace("{domain}", encodeURIComponent(new URL(url).hostname))
-      : null;
+  // 試す画像の順番：自分で設定した画像 →（未設定なら）ファビコン取得サービス → サイトの /favicon.ico → 頭文字
+  let sources = [];
+  if (icon && safeUrl(icon)) {
+    sources = [safeUrl(icon)];
+  } else if (!icon && state.settings.useFavicons && /^https?:/.test(url) && hostname(url)) {
+    sources = faviconSources(url);
+  }
 
-  if (imageSrc) {
-    const img = h("img", { src: imageSrc, alt: "", loading: "lazy", referrerpolicy: "no-referrer" });
+  if (sources.length) {
+    const img = h("img", { alt: "", loading: "lazy", referrerpolicy: "no-referrer" });
     const wrap = h("span", { class: "link__icon", "aria-hidden": "true" }, img);
-    img.addEventListener("error", () => wrap.replaceWith(letter()), { once: true });
+    let index = 0;
+    const next = () => {
+      index += 1;
+      if (index < sources.length) img.src = sources[index];
+      else wrap.replaceWith(letter());
+    };
+    img.addEventListener("error", next);
+    img.addEventListener("load", () => {
+      // 取得サービスは、ファビコンが見つからないと 16px の地球儀を返すので、次の候補を試す
+      if (sources[index].startsWith(FAVICON_SERVICE_ORIGIN) && img.naturalWidth <= 16 && index < sources.length - 1) next();
+    });
+    img.src = sources[0];
     return wrap;
   }
   if (icon) return h("span", { class: "link__icon", "aria-hidden": "true" }, icon); // 絵文字
   return letter();
+}
+
+const FAVICON_SERVICE_ORIGIN = new URL(FAVICON_URL).origin;
+
+/** ファビコンの候補（取得サービス → サイトの /favicon.ico） */
+function faviconSources(url) {
+  const u = new URL(url);
+  const firstSegment = u.pathname.split("/").filter(Boolean)[0];
+  // 最後の「/」まで付けると、Google ドキュメントなどページごとのアイコンが返ってくる
+  const page = `${u.origin}/${firstSegment ? `${firstSegment}/` : ""}`;
+  return [
+    FAVICON_URL.replace("{url}", encodeURIComponent(page)).replace("{domain}", encodeURIComponent(u.hostname)),
+    `${u.origin}/favicon.ico`,
+  ];
 }
 
 /** Markdown を安全な HTML にする（ライブラリが読み込めないときは null） */
