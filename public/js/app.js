@@ -2846,6 +2846,24 @@ el.resetButton.addEventListener("click", async () => {
 
 el.editToggle.addEventListener("click", () => setEditing(!editing));
 
+/*
+ * 編集用のダイアログでは、入力欄で Enter を押したら「保存」にする。
+ * （そのままだと、ボタンの並びで先にある「キャンセル」が押された扱いになってしまう）
+ * 日本語入力の変換を確定する Enter、複数行の入力欄、ボタンやプルダウンの上の Enter はそのまま。
+ */
+for (const form of [el.widgetForm, el.linkForm, el.textForm, el.settingsForm]) {
+  form.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return;
+    if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return; // textarea・select・button は対象外
+    if (["checkbox", "radio", "button", "submit", "reset", "file", "color"].includes(target.type)) return;
+    event.preventDefault();
+    const save = form.querySelector('button[value="ok"]');
+    if (save) form.requestSubmit(save); // 入力内容のチェック（URL の形式など）も通常どおり行う
+  });
+}
+
 /** ログイン前・読み込み失敗時：ダッシュボードを隠して、編集できないようにする */
 function showSignedOut() {
   clearInterval(clockTimer);
