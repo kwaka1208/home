@@ -70,7 +70,8 @@
           <option value="note">メモ</option>
           <option value="clock">時計</option>
           <option value="search">Web 検索</option>
-          <option value="embed">埋め込み（カレンダーなど）</option>
+          <option value="embed">埋め込み（YouTube・カレンダーなど）</option>
+          <option value="todo">ToDo（カテゴリー別）</option>
         </select>
       </label>
 
@@ -111,10 +112,11 @@
       </label>
 
       <label class="field" data-for-type="embed">
-        <span class="field__label">埋め込む URL</span>
-        <input class="input" name="embedUrl" type="url" placeholder="https://calendar.google.com/calendar/embed?src=...">
+        <span class="field__label">埋め込む URL（YouTube の動画・プレイリストの URL はそのまま貼れます）</span>
+        <input class="input" name="embedUrl" type="url" placeholder="https://www.youtube.com/watch?v=...">
+        <span class="field__hint" id="embed-url-hint" hidden>YouTube の動画として埋め込みます。高さは幅に合わせて自動で決まります。</span>
       </label>
-      <label class="field" data-for-type="embed">
+      <label class="field" data-for-type="embed" id="embed-height-field">
         <span class="field__label">高さ（px）</span>
         <input class="input" name="height" type="number" min="120" max="1600" step="10">
       </label>
@@ -163,6 +165,25 @@
       </div>
     </form>
   </dialog>
+
+  <!-- 1 行の文字入力（ToDo やカテゴリーの名前など） -->
+  <dialog class="dialog" id="text-dialog">
+    <form method="dialog" class="dialog__body" id="text-form">
+      <h2 class="dialog__title" id="text-dialog-title"></h2>
+      <label class="field">
+        <span class="field__label" id="text-dialog-label"></span>
+        <input class="input" name="text" maxlength="200" required>
+      </label>
+      <div class="dialog__actions">
+        <span class="dialog__spacer"></span>
+        <button value="cancel" class="button" formnovalidate>キャンセル</button>
+        <button value="ok" class="button button--primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 一時的なお知らせ -->
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
   <!-- 設定 -->
   <dialog class="dialog dialog--wide" id="settings-dialog">
