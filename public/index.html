@@ -140,6 +140,10 @@
         <input class="input" name="height" type="number" min="120" max="1600" step="10">
       </label>
 
+      <label class="checkbox" data-for-type="note">
+        <input type="checkbox" name="noteMarkdown"> Markdown で書式を付けて表示する（見出し・箇条書き・チェックボックス・リンクなど）
+      </label>
+
       <label class="field" data-for-type="photo">
         <span class="field__label">写真の見せ方</span>
         <select class="input" name="photoFit">
@@ -285,6 +289,8 @@
   </dialog>
 
   <script src="vendor/Sortable.min.js"></script>
+  <script src="vendor/marked.umd.js"></script>
+  <script src="vendor/purify.min.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

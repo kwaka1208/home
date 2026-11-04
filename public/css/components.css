@@ -483,6 +483,69 @@
   [data-layout="flow"] .note { min-height: 140px; resize: vertical; }
   :root:not([data-layout="flow"]) .note { resize: none; } /* 高さは段で決まるので、手で伸ばせないようにする */
 
+  /* Markdown のメモ：表示用（.note--view）と編集用（textarea）を切り替える */
+  .note-box {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .note-box > .note { flex: 1 1 auto; }
+  .note-box > [hidden] { display: none; }
+  .note--view {
+    overflow: auto;
+    cursor: text;
+    overflow-wrap: anywhere;
+  }
+  .note__placeholder { color: var(--color-text-muted); }
+
+  /* Markdown の中身 */
+  .markdown > :first-child { margin-top: 0; }
+  .markdown > :last-child { margin-bottom: 0; }
+  .markdown h1, .markdown h2, .markdown h3,
+  .markdown h4, .markdown h5, .markdown h6 {
+    margin: 0.9em 0 0.4em;
+    font-family: var(--widget-title-font);
+    line-height: 1.35;
+  }
+  .markdown h1 { font-size: 1.3em; }
+  .markdown h2 { font-size: 1.15em; }
+  .markdown h3, .markdown h4, .markdown h5, .markdown h6 { font-size: 1em; }
+  .markdown p, .markdown ul, .markdown ol, .markdown blockquote, .markdown pre, .markdown table { margin: 0 0 0.6em; }
+  .markdown ul, .markdown ol { padding-left: 1.4em; }
+  .markdown li > ul, .markdown li > ol { margin: 0.2em 0; }
+  .markdown li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.3em; }
+  .markdown input[type="checkbox"] {
+    margin: 0 0.4em 0 0;
+    vertical-align: -0.1em;
+    accent-color: var(--widget-accent);
+    cursor: pointer;
+  }
+  .markdown a { color: var(--color-accent); }
+  .markdown code {
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+  .markdown pre {
+    padding: var(--space-2) var(--space-3);
+    overflow-x: auto;
+    border-radius: var(--link-radius);
+    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  }
+  .markdown pre code { padding: 0; background: none; }
+  .markdown blockquote {
+    padding-left: var(--space-3);
+    border-left: 3px solid var(--color-border);
+    color: var(--color-text-muted);
+  }
+  .markdown hr { border: 0; border-top: var(--border-width) solid var(--color-border); margin: 0.8em 0; }
+  .markdown table { border-collapse: collapse; font-size: 0.95em; }
+  .markdown th, .markdown td { padding: 0.2em 0.6em; border: var(--border-width) solid var(--color-border); }
+  .markdown img { max-width: 100%; }
+
   /* ---------- 時計 ---------- */
   .clock { display: grid; gap: var(--space-1); padding: var(--space-1) 0 0; }
   .clock__time {

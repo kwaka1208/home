@@ -620,18 +620,92 @@ function renderIcon(item, url, title) {
   return letter();
 }
 
+/** Markdown を安全な HTML にする（ライブラリが読み込めないときは null） */
+function markdownToHtml(text) {
+  if (typeof marked === "undefined" || typeof DOMPurify === "undefined") return null;
+  const html = marked.parse(text, { gfm: true, breaks: true, async: false });
+  return DOMPurify.sanitize(html);
+}
+
+/** チェックボックスの行（- [ ] / - [x]）にあたる正規表現 */
+const TASK_LINE = /^(\s*(?:[-*+]|\d+[.)])\s+)\[( |x|X)\]/gm;
+
 function renderNote(widget) {
   const area = h("textarea", {
     class: "note",
     "aria-label": widget.title || "メモ",
-    placeholder: "ここにメモを書けます（自動保存）",
+    placeholder: widget.markdown === false
+      ? "ここにメモを書けます（自動保存）"
+      : "ここにメモを書けます（自動保存）\n# 見出し / - 箇条書き / - [ ] チェック / **太字** / [リンク](https://…)",
   });
   area.value = widget.text || "";
   area.addEventListener("input", () => {
     widget.text = area.value;
     commit({ rerender: false });
   });
-  return area;
+  if (widget.markdown === false) return area;
+
+  // Markdown：ふだんは整えて表示し、クリックすると編集に切り替える
+  const view = h("div", {
+    class: "note note--view markdown",
+    tabindex: "0",
+    title: "クリックして編集",
+    "aria-label": `${widget.title || "メモ"}（Enter で編集）`,
+  });
+  const box = h("div", { class: "note-box" }, view, area);
+
+  const showView = () => {
+    const text = widget.text || "";
+    const html = text.trim() ? markdownToHtml(text) : null;
+    if (text.trim() && html === null) return; // ライブラリが読めないときは編集欄のまま
+    if (!text.trim()) {
+      view.replaceChildren(h("p", { class: "note__placeholder" }, "クリックしてメモを書く（Markdown が使えます）"));
+    } else {
+      view.innerHTML = html;
+      for (const a of view.querySelectorAll("a[href]")) {
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+      }
+      // チェックボックスは、クリックで元の文章の [ ] / [x] を切り替える
+      [...view.querySelectorAll('input[type="checkbox"]')].forEach((box, n) => {
+        box.disabled = false;
+        box.addEventListener("change", () => {
+          let i = -1;
+          widget.text = (widget.text || "").replace(TASK_LINE, (all, head, mark) => {
+            i += 1;
+            return i === n ? `${head}[${mark === " " ? "x" : " "}]` : all;
+          });
+          area.value = widget.text;
+          commit({ rerender: false });
+          showView();
+        });
+      });
+    }
+    view.hidden = false;
+    area.hidden = true;
+  };
+  const showEdit = () => {
+    view.hidden = true;
+    area.hidden = false;
+    area.focus();
+  };
+
+  view.addEventListener("click", (event) => {
+    if (editing || event.target.closest("a, input")) return;
+    showEdit();
+  });
+  view.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.target === view) {
+      event.preventDefault();
+      showEdit();
+    }
+  });
+  area.addEventListener("blur", showView);
+  area.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") area.blur();
+  });
+  showView();
+  return box;
 }
 
 function renderClock(widget) {
@@ -1404,6 +1478,7 @@ function openWidgetDialog(widgetId) {
   f.height.value = widget?.height || 400;
   f.timeZone.value = widget?.timeZone || "";
   f.photoFit.value = widget?.fit || "cover";
+  f.noteMarkdown.checked = widget?.markdown !== false;
   f.photoInterval.value = String(widget?.interval ?? 10);
   el.widgetDelete.hidden = !widget;
   updateWidgetFormVisibility();
@@ -1450,6 +1525,7 @@ el.widgetDialog.addEventListener("close", () => {
     widget.height = Number(f.height.value) || 400;
   }
   if (widget.type === "clock") widget.timeZone = f.timeZone.value.trim();
+  if (widget.type === "note") widget.markdown = f.noteMarkdown.checked;
   if (widget.type === "photo") {
     widget.fit = f.photoFit.value === "contain" ? "contain" : "cover";
     const interval = Number(f.photoInterval.value);
