@@ -218,11 +218,14 @@
       </label>
 
       <!-- 世界時計 -->
-      <label class="field" data-for-type="worldclock">
-        <span class="field__label">都市（1 行に「表示名=タイムゾーン」。例：パリ=Europe/Paris、シドニー=Australia/Sydney）</span>
-        <textarea class="input" name="worldZones" rows="5" spellcheck="false"></textarea>
-        <span class="field__hint">タイムゾーンの名前は <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones" target="_blank" rel="noopener noreferrer">一覧（英語）</a> の「TZ identifier」で調べられます</span>
-      </label>
+      <div class="field" data-for-type="worldclock">
+        <span class="field__label">都市（上から順に表示します）</span>
+        <ul class="zone-list" id="world-zone-list"></ul>
+        <div class="field__row">
+          <button type="button" class="button button--small" id="world-zone-add">＋ 都市を追加</button>
+        </div>
+        <span class="field__hint">プルダウンで都市を選ぶと表示名が入ります（表示名は自由に書き換えられます）。一覧にない地域は「すべてのタイムゾーン」から選べます</span>
+      </div>
 
       <!-- 習慣トラッカー -->
       <label class="field" data-for-type="habit">
@@ -279,8 +282,8 @@
       </label>
 
       <label class="field" data-for-type="clock">
-        <span class="field__label">タイムゾーン（空欄でブラウザの設定）</span>
-        <input class="input" name="timeZone" placeholder="Asia/Tokyo">
+        <span class="field__label">タイムゾーン</span>
+        <select class="input" name="timeZone" id="clock-time-zone"></select>
       </label>
 
       <div class="dialog__actions">
