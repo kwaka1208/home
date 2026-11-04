@@ -110,6 +110,7 @@ const DEFAULT_SETTINGS = {
   layout: "tile", // "tile"：段で高さを指定してタイル状に並べる / "flow"：中身の高さに合わせる
   openInNewTab: true,
   useFavicons: true,
+  autoRenewGoogle: true, // カレンダー・Gmail の連携を、画面を操作したときに自動で延長する
 };
 const DEFAULT_SEARCH_URL = "https://www.google.com/search?q=%s";
 
@@ -1107,28 +1108,35 @@ function renderGoogleWidget(widget, { cacheKey, load, view }) {
   }
   const token = storage.getGoogleToken(scopes);
   const entry = googleCache.get(widget.id);
+  const connect = async () => {
+    try {
+      const got = await storage.connectGoogle(scopes);
+      if (!got) return;
+      googleCache.delete(widget.id);
+      refreshGoogleWidgets();
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
   if (!token) {
-    const expiredBefore = entry?.data;
+    // 期限が切れても、最後に読み込んだ内容は表示したままにして、小さく「連携し直す」を出す
+    if (entry?.data !== undefined && entry.key === cacheKey) {
+      return h("div", { class: "google-widget" },
+        h("p", { class: "google-expired" },
+          h("span", {}, state.settings.autoRenewGoogle
+            ? "連携の期限が切れました（画面をクリックすると自動で延長します）"
+            : "連携の期限が切れました"),
+          h("button", { type: "button", class: "button button--small", onclick: connect }, "連携し直す"),
+        ),
+        view(entry.data),
+      );
+    }
     return h("div", { class: "google-connect" },
-      h("p", { class: "widget__empty" }, expiredBefore
-        ? "Google との連携の有効期限（約 1 時間）が切れました。"
-        : widget.type === "calendar"
-          ? "Google カレンダーの予定を表示するには、読み取りの許可が必要です。"
-          : "Gmail の未読件数を表示するには、ラベルと件数の読み取りの許可が必要です（メールの本文や件名は読みません）。"),
-      h("button", {
-        type: "button",
-        class: "button button--primary",
-        onclick: async () => {
-          try {
-            const got = await storage.connectGoogle(scopes);
-            if (!got) return;
-            googleCache.delete(widget.id);
-            refreshGoogleWidgets();
-          } catch (err) {
-            showToast(err.message);
-          }
-        },
-      }, expiredBefore ? "連携し直す" : "Google と連携"),
+      h("p", { class: "widget__empty" }, widget.type === "calendar"
+        ? "Google カレンダーの予定を表示するには、読み取りの許可が必要です。"
+        : "Gmail の未読件数を表示するには、ラベルと件数の読み取りの許可が必要です（メールの本文や件名は読みません）。"),
+      h("button", { type: "button", class: "button button--primary", onclick: connect },
+        storage.getGoogleConnection() ? "連携し直す" : "Google と連携"),
     );
   }
 
@@ -1140,6 +1148,40 @@ function renderGoogleWidget(widget, { cacheKey, load, view }) {
     onError: (err) => { if (err.expired) storage.forgetGoogleToken(); },
   });
 }
+
+/*
+ * 連携の自動延長：Google の連携（アクセストークン）は 1 時間で切れ、ブラウザだけでは延ばせない。
+ * そこで、期限が近い・切れたあとに利用者が画面をクリックしたら、そのクリックをきっかけに取り直す
+ * （ポップアップはクリックなどの操作からしか開けないため）。一度許可していれば、ポップアップは自動で閉じる。
+ */
+const RENEW_BEFORE_MS = 10 * 60 * 1000; // 期限の 10 分前から延長する
+const RENEW_RETRY_MS = 3 * 60 * 1000; // 失敗したら、しばらく試さない
+let renewing = false;
+let lastRenewAttempt = 0;
+
+function needsGoogleRenewal() {
+  if (!state || !state.settings.autoRenewGoogle || !storage.canUseGoogleApi()) return false;
+  if (!widgets().some((w) => GOOGLE_WIDGETS.includes(w.type))) return false;
+  const connection = storage.getGoogleConnection();
+  if (!connection) return false; // 一度も連携していなければ、自動では始めない
+  return connection.expiresAt - Date.now() < RENEW_BEFORE_MS;
+}
+
+document.addEventListener("click", (event) => {
+  if (renewing || Date.now() - lastRenewAttempt < RENEW_RETRY_MS) return;
+  if (event.target.closest?.("dialog, .google-connect, .google-expired")) return; // 自分で押すボタンの邪魔をしない
+  if (!needsGoogleRenewal()) return;
+  renewing = true;
+  lastRenewAttempt = Date.now();
+  storage.connectGoogle(storage.getGoogleConnection().scopes)
+    .then((token) => {
+      if (!token) return;
+      for (const w of widgets()) if (GOOGLE_WIDGETS.includes(w.type) && googleCache.get(w.id)?.error) googleCache.delete(w.id);
+      refreshGoogleWidgets();
+    })
+    .catch(() => { /* ポップアップがブロックされたなど。ウィジェットの「連携し直す」から手動で */ })
+    .finally(() => { renewing = false; });
+}, true);
 
 /** 更新ボタンを見出しの右に置く（中に更新時刻の行を出さない）ウィジェット */
 const HEADER_REFRESH_WIDGETS = ["calendar"];
@@ -2766,6 +2808,7 @@ el.settingsOpen.addEventListener("click", () => {
   f.layout.value = state.settings.layout;
   f.openInNewTab.checked = state.settings.openInNewTab;
   f.useFavicons.checked = state.settings.useFavicons;
+  f.autoRenewGoogle.checked = state.settings.autoRenewGoogle;
   el.settingsDialog.returnValue = "";
   el.settingsDialog.showModal();
 });
@@ -2794,6 +2837,7 @@ el.settingsDialog.addEventListener("close", () => {
       layout: f.layout.value === "flow" ? "flow" : "tile",
       openInNewTab: f.openInNewTab.checked,
       useFavicons: f.useFavicons.checked,
+      autoRenewGoogle: f.autoRenewGoogle.checked,
     };
     commit();
   } else {

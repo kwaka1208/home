@@ -609,7 +609,7 @@
   .toast {
     position: fixed;
     left: 50%;
-    bottom: var(--space-5);
+    bottom: calc(var(--footer-height) + var(--space-3)); /* 固定したフッターの上に出す */
     z-index: 30;
     display: flex;
     align-items: center;
@@ -646,6 +646,20 @@
     color: var(--color-text-muted);
     font-size: var(--font-size-xs);
   }
+  /* 連携の期限が切れたとき、最後の表示の上に出す小さなお知らせ */
+  .google-expired {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--link-radius);
+    background: color-mix(in srgb, var(--color-text) 6%, transparent);
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+  }
+
   .google-error {
     padding: var(--space-2) var(--space-3);
     border-radius: var(--link-radius);
