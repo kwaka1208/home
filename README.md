@@ -1,5 +1,7 @@
 # personal-dashboard
 
+![personal-dashboard の画面（初期レイアウト）](docs/screenshot.png)
+
 よく使うツールへのリンクやメモをまとめた、**自分専用のダッシュボード**です。
 Google アカウントでログインした本人だけが、中身を見たり編集したりできます。
 
