@@ -1620,21 +1620,114 @@ function isValidTimeZone(tz) {
   }
 }
 
-/** 「表示名=タイムゾーン」の行を読み取る */
-function parseWorldZones(text) {
-  const zones = [];
-  const invalid = [];
-  for (const line of String(text).split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const [left, right] = trimmed.includes("=") ? trimmed.split("=", 2) : [trimmed, trimmed];
-    const tz = right.trim();
-    const label = left.trim() || tz.split("/").pop().replace(/_/g, " ");
-    if (isValidTimeZone(tz)) zones.push({ id: uid(), label, tz });
-    else invalid.push(trimmed);
+/** プルダウンに出す主な都市（地域ごと）。ここにないものは「すべてのタイムゾーン」から選ぶ */
+const ZONE_CHOICES = [
+  ["アジア", [
+    ["東京", "Asia/Tokyo"], ["ソウル", "Asia/Seoul"], ["北京・上海", "Asia/Shanghai"], ["香港", "Asia/Hong_Kong"],
+    ["台北", "Asia/Taipei"], ["マニラ", "Asia/Manila"], ["シンガポール", "Asia/Singapore"],
+    ["クアラルンプール", "Asia/Kuala_Lumpur"], ["バンコク", "Asia/Bangkok"], ["ハノイ・ホーチミン", "Asia/Ho_Chi_Minh"],
+    ["ジャカルタ", "Asia/Jakarta"], ["ニューデリー・ムンバイ", "Asia/Kolkata"], ["ドバイ", "Asia/Dubai"],
+  ]],
+  ["オセアニア・太平洋", [
+    ["シドニー", "Australia/Sydney"], ["メルボルン", "Australia/Melbourne"], ["ブリスベン", "Australia/Brisbane"],
+    ["パース", "Australia/Perth"], ["オークランド", "Pacific/Auckland"], ["グアム", "Pacific/Guam"], ["ホノルル", "Pacific/Honolulu"],
+  ]],
+  ["ヨーロッパ・アフリカ", [
+    ["ロンドン", "Europe/London"], ["ダブリン", "Europe/Dublin"], ["リスボン", "Europe/Lisbon"], ["パリ", "Europe/Paris"],
+    ["ベルリン", "Europe/Berlin"], ["アムステルダム", "Europe/Amsterdam"], ["チューリッヒ", "Europe/Zurich"],
+    ["ローマ", "Europe/Rome"], ["マドリード", "Europe/Madrid"], ["ストックホルム", "Europe/Stockholm"],
+    ["ヘルシンキ", "Europe/Helsinki"], ["アテネ", "Europe/Athens"], ["イスタンブール", "Europe/Istanbul"],
+    ["モスクワ", "Europe/Moscow"], ["カイロ", "Africa/Cairo"], ["ナイロビ", "Africa/Nairobi"],
+    ["ヨハネスブルグ", "Africa/Johannesburg"],
+  ]],
+  ["南北アメリカ", [
+    ["ニューヨーク", "America/New_York"], ["トロント", "America/Toronto"], ["シカゴ", "America/Chicago"],
+    ["デンバー", "America/Denver"], ["フェニックス", "America/Phoenix"], ["ロサンゼルス・サンフランシスコ", "America/Los_Angeles"],
+    ["シアトル・バンクーバー", "America/Vancouver"], ["アンカレッジ", "America/Anchorage"],
+    ["メキシコシティ", "America/Mexico_City"], ["サンパウロ", "America/Sao_Paulo"],
+    ["ブエノスアイレス", "America/Argentina/Buenos_Aires"],
+  ]],
+  ["その他", [["協定世界時（UTC）", "UTC"]]],
+];
+
+/** 主な都市のタイムゾーン → 都市名 */
+const ZONE_CITY = new Map(ZONE_CHOICES.flatMap(([, list]) => list.map(([name, tz]) => [tz, name])));
+
+/** 「UTC+9」のような時差の表記（夏時間は今日の時点のもの） */
+function utcOffsetLabel(tz) {
+  try {
+    const name = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "shortOffset" })
+      .formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value || "";
+    const offset = name.replace(/^GMT/, "");
+    return offset ? `UTC${offset.replace("-", "−")}` : "UTC±0";
+  } catch {
+    return "";
   }
-  return { zones, invalid };
 }
+
+let zoneOptionsCache = null;
+
+/** プルダウンの中身（毎回作り直すと重いので、一度作ったものを複製して使う） */
+function zoneOptionGroups() {
+  if (!zoneOptionsCache) {
+    const withOffset = (text, tz) => {
+      const offset = utcOffsetLabel(tz);
+      return offset ? `${text}（${offset}）` : text;
+    };
+    const groups = ZONE_CHOICES.map(([region, list]) => h("optgroup", { label: region },
+      ...list.filter(([, tz]) => isValidTimeZone(tz)).map(([name, tz]) => h("option", { value: tz }, withOffset(name, tz)))));
+    let all = [];
+    try { all = Intl.supportedValuesOf("timeZone"); } catch { /* 古いブラウザ：主な都市だけ */ }
+    const others = all.filter((tz) => !ZONE_CITY.has(tz));
+    if (others.length) {
+      groups.push(h("optgroup", { label: "すべてのタイムゾーン" },
+        ...others.map((tz) => h("option", { value: tz }, withOffset(tz.replace(/_/g, " "), tz)))));
+    }
+    zoneOptionsCache = groups;
+  }
+  return zoneOptionsCache.map((g) => g.cloneNode(true));
+}
+
+/** タイムゾーンのプルダウンに中身を入れて、値を選ぶ（一覧にない値も選べるように足す） */
+function fillZoneSelect(select, value, firstOption) {
+  select.replaceChildren(firstOption, ...zoneOptionGroups());
+  if (value && ![...select.options].some((o) => o.value === value)) {
+    select.append(h("option", { value }, value));
+  }
+  select.value = value || "";
+}
+
+/** タイムゾーンから自動で付ける表示名 */
+function zoneDefaultLabel(tz) {
+  return ZONE_CITY.get(tz) || tz.split("/").pop().replace(/_/g, " ");
+}
+
+/** 世界時計の設定欄に、都市 1 行を足す */
+function addZoneRow(zone) {
+  const label = h("input", { class: "input", name: "zoneLabel", placeholder: "表示名", "aria-label": "表示名" });
+  const select = h("select", { class: "input", name: "zoneTz", "aria-label": "タイムゾーン" });
+  fillZoneSelect(select, zone?.tz || "", h("option", { value: "" }, "都市を選んでください"));
+  label.value = zone?.label || "";
+  // 表示名を自分で変えていなければ、選んだ都市の名前に合わせる
+  let autoLabel = zone ? zoneDefaultLabel(zone.tz) : "";
+  select.addEventListener("change", () => {
+    if (!label.value.trim() || label.value === autoLabel) {
+      autoLabel = select.value ? zoneDefaultLabel(select.value) : "";
+      label.value = autoLabel;
+    }
+  });
+  const row = h("li", { class: "zone-list__row" }, label, select,
+    h("button", {
+      type: "button", class: "button button--icon button--ghost", title: "この都市を削除", "aria-label": "この都市を削除",
+      onclick: () => row.remove(),
+    }, "×"));
+  $("#world-zone-list").append(row);
+  return row;
+}
+
+$("#world-zone-add").addEventListener("click", () => {
+  $("select", addZoneRow(null)).focus();
+});
 
 function renderWorldClock(widget) {
   if (widget.zones.length === 0) {
@@ -1960,13 +2053,14 @@ const WIDGET_FORMS = {
         .map((z) => ({ id: z.id ? String(z.id) : uid(), label: typeof z.label === "string" ? z.label : z.tz, tz: z.tz }));
     },
     fill: (f, w) => {
-      const zones = w ? w.zones : DEFAULT_WORLD_ZONES;
-      f.worldZones.value = zones.map((z) => `${z.label}=${z.tz}`).join("\n");
+      $("#world-zone-list").replaceChildren();
+      for (const zone of w ? w.zones : DEFAULT_WORLD_ZONES) addZoneRow(zone);
     },
     save: (f, w) => {
-      const { zones, invalid } = parseWorldZones(f.worldZones.value);
-      w.zones = zones;
-      if (invalid.length) showToast(`読み取れなかった行があります：${invalid.join("、")}`);
+      w.zones = $$(".zone-list__row", el.widgetForm)
+        .map((row) => ({ tz: $("select", row).value, label: $("input", row).value.trim() }))
+        .filter((z) => z.tz && isValidTimeZone(z.tz))
+        .map((z) => ({ id: uid(), label: z.label || zoneDefaultLabel(z.tz), tz: z.tz }));
     },
   },
   habit: {
@@ -2554,7 +2648,7 @@ function openWidgetDialog(widgetId) {
   f.searchUrl.value = widget?.searchUrl || "";
   f.embedUrl.value = widget?.embedUrl || "";
   f.height.value = widget?.height || 400;
-  f.timeZone.value = widget?.timeZone || "";
+  fillZoneSelect(f.timeZone, widget?.timeZone || "", h("option", { value: "" }, "ブラウザの設定に合わせる"));
   f.photoFit.value = widget?.fit || "cover";
   f.noteMarkdown.checked = widget?.markdown !== false;
   f.calendarDays.value = String(widget?.days || 3);
