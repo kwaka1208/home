@@ -86,6 +86,9 @@ const MIN_SIZE = {
   github: { rows: 2 },
 };
 
+/** 高さ（段数）を固定する種類。1 行で使うものは、段を増やしても空白が増えるだけなので選べなくする */
+const FIXED_ROWS = { search: 1, mail: 1 };
+
 function minSizeOf(type) {
   return { size: "s", rows: 1, ...(MIN_SIZE[type] || {}) };
 }
@@ -99,6 +102,7 @@ function clampSize(size, type) {
 
 /** 高さ（段数）を選択肢の中で、最小サイズ以上にそろえる */
 function normalizeRows(value, type) {
+  if (FIXED_ROWS[type]) return FIXED_ROWS[type];
   const rows = Number(value);
   const valid = ROW_OPTIONS.includes(rows) ? rows : DEFAULT_ROWS[type] || 2;
   return Math.max(valid, minSizeOf(type).rows);
@@ -634,8 +638,97 @@ function renderWidget(widget) {
       tools,
     ),
     h("div", { class: "widget__body" }, renderWidgetBody(widget)),
+    h("span", {
+      class: "widget__resize",
+      title: FIXED_ROWS[widget.type] ? "ドラッグで幅を変更" : "ドラッグで大きさを変更",
+      "aria-hidden": "true",
+      onpointerdown: (event) => startResize(event, widget, section),
+    }),
   );
   return section;
+}
+
+/* ------------------------------------------------------------------ */
+/* ドラッグで大きさを変える（編集中・タイル表示のとき、右下の角をドラッグ）   */
+/* ------------------------------------------------------------------ */
+
+/** 今の画面でのグリッドの寸法（列の数・幅、段の高さ、すき間）と、幅の種類ごとの列数 */
+function gridMetrics() {
+  const style = getComputedStyle(el.dashboard);
+  const columns = style.gridTemplateColumns.split(" ").map(parseFloat).filter((n) => n > 0);
+  const cols = columns.length || 1;
+  const span = (name) => Math.min(cols, Number(style.getPropertyValue(`--span-${name}`)) || 1);
+  return {
+    cols,
+    colWidth: columns[0] || el.dashboard.clientWidth,
+    rowHeight: parseFloat(style.gridAutoRows) || 150,
+    colGap: parseFloat(style.columnGap) || 0,
+    rowGap: parseFloat(style.rowGap) || 0,
+    spans: { s: span("s"), m: span("m"), l: span("l"), xl: cols },
+  };
+}
+
+/** 列数 n に合う幅の種類。今の幅で同じ列数になるなら変えない（狭い画面で、広い画面用の幅を崩さない） */
+function sizeForColumns(n, current, type, spans) {
+  const allowed = SIZES.slice(SIZES.indexOf(minSizeOf(type).size));
+  if (allowed.includes(current) && spans[current] === n) return current;
+  const exact = allowed.find((size) => spans[size] === n);
+  if (exact) return exact;
+  // ちょうどの列数がなければ、いちばん近いもの
+  return allowed.reduce((best, size) => (Math.abs(spans[size] - n) < Math.abs(spans[best] - n) ? size : best), allowed[0]);
+}
+
+function startResize(event, widget, section) {
+  if (!editing || state.settings.layout === "flow" || event.button > 0) return;
+  event.preventDefault();
+  const handle = event.currentTarget;
+  handle.setPointerCapture(event.pointerId);
+  const m = gridMetrics();
+  const rect = section.getBoundingClientRect();
+  const start = { x: event.clientX, y: event.clientY, width: rect.width, height: rect.height };
+  const fixedRows = FIXED_ROWS[widget.type];
+  const minRows = minSizeOf(widget.type).rows;
+  let size = widget.size;
+  let rows = widget.rows;
+
+  const badge = h("span", { class: "widget__resize-badge" });
+  section.append(badge);
+  section.classList.add("is-resizing");
+  const show = () => {
+    section.dataset.size = size;
+    section.dataset.rows = String(rows);
+    badge.textContent = `${SIZE_NAMES[size]}（${m.spans[size]} 列）・${rows} 段${fixedRows ? "（固定）" : ""}`;
+  };
+  show();
+
+  const move = (e) => {
+    const width = start.width + (e.clientX - start.x);
+    const height = start.height + (e.clientY - start.y);
+    const n = Math.min(m.cols, Math.max(1, Math.round((width + m.colGap) / (m.colWidth + m.colGap))));
+    size = sizeForColumns(n, widget.size, widget.type, m.spans);
+    if (!fixedRows) {
+      const r = Math.round((height + m.rowGap) / (m.rowHeight + m.rowGap));
+      rows = Math.max(minRows, Math.min(ROW_OPTIONS[ROW_OPTIONS.length - 1], r));
+    }
+    show();
+  };
+  const end = () => {
+    handle.removeEventListener("pointermove", move);
+    handle.removeEventListener("pointerup", end);
+    handle.removeEventListener("pointercancel", end);
+    badge.remove();
+    section.classList.remove("is-resizing");
+    if (size !== widget.size || rows !== widget.rows) {
+      widget.size = size;
+      widget.rows = rows;
+      commit();
+    } else {
+      show();
+    }
+  };
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", end);
+  handle.addEventListener("pointercancel", end);
 }
 
 function renderWidgetBody(widget) {
@@ -1095,6 +1188,7 @@ function refreshWidgetBody(widget) {
   if (!body) return;
   const content = renderWidgetBody(widget);
   body.replaceChildren(...(content ? [content] : []));
+  if (HEADER_REFRESH_WIDGETS.includes(widget.type)) updateHeaderRefresh(widget);
 }
 
 /**
@@ -1121,11 +1215,15 @@ function renderGoogleWidget(widget, { cacheKey, load, view }) {
   if (!token) {
     // 期限が切れても、最後に読み込んだ内容は表示したままにして、小さく「連携し直す」を出す
     if (entry?.data !== undefined && entry.key === cacheKey) {
-      return h("div", { class: "google-widget" },
-        h("p", { class: "google-expired" },
-          h("span", {}, state.settings.autoRenewGoogle
-            ? "連携の期限が切れました（画面をクリックすると自動で延長します）"
-            : "連携の期限が切れました"),
+      const compact = widget.type === "mail"; // 1 段のウィジェットには短く出す
+      return h("div", { class: `google-widget${compact ? " google-widget--compact" : ""}` },
+        h("p", {
+          class: "google-expired",
+          title: state.settings.autoRenewGoogle ? "画面をクリックすると自動で延長します" : null,
+        },
+          h("span", {}, compact || !state.settings.autoRenewGoogle
+            ? "連携の期限が切れました"
+            : "連携の期限が切れました（画面をクリックすると自動で延長します）"),
           h("button", { type: "button", class: "button button--small", onclick: connect }, "連携し直す"),
         ),
         view(entry.data),
@@ -1134,7 +1232,7 @@ function renderGoogleWidget(widget, { cacheKey, load, view }) {
     return h("div", { class: "google-connect" },
       h("p", { class: "widget__empty" }, widget.type === "calendar"
         ? "Google カレンダーの予定を表示するには、読み取りの許可が必要です。"
-        : "Gmail の未読件数を表示するには、ラベルと件数の読み取りの許可が必要です（メールの本文や件名は読みません）。"),
+        : "未読件数の表示には許可が必要です（本文・件名は読みません）"),
       h("button", { type: "button", class: "button button--primary", onclick: connect },
         storage.getGoogleConnection() ? "連携し直す" : "Google と連携"),
     );
@@ -1184,7 +1282,7 @@ document.addEventListener("click", (event) => {
 }, true);
 
 /** 更新ボタンを見出しの右に置く（中に更新時刻の行を出さない）ウィジェット */
-const HEADER_REFRESH_WIDGETS = ["calendar"];
+const HEADER_REFRESH_WIDGETS = ["calendar", "mail"];
 
 /** 見出しの更新ボタンに出す説明（最後に読み込んだ時刻つき） */
 function refreshButtonTitle(widget) {
@@ -1196,10 +1294,17 @@ function refreshButtonTitle(widget) {
   return time ? `最新の情報を読み込む（${time} 更新）` : "最新の情報を読み込む";
 }
 
+/** 見出しの更新ボタンを出すか（Google のウィジェットは、連携中のときだけ） */
+function canRefreshHeader(widget) {
+  if (!GOOGLE_WIDGETS.includes(widget.type)) return true;
+  return storage.canUseGoogleApi() && Boolean(storage.getGoogleToken(scopesFor(widget.type)));
+}
+
 function renderHeaderRefresh(widget) {
   return h("button", {
     type: "button",
     class: "button button--small button--ghost widget__refresh",
+    hidden: !canRefreshHeader(widget),
     title: refreshButtonTitle(widget),
     "aria-label": refreshButtonTitle(widget),
     onclick: () => {
@@ -1215,6 +1320,7 @@ function renderHeaderRefresh(widget) {
 function updateHeaderRefresh(widget) {
   const button = el.dashboard.querySelector(`.widget[data-id="${CSS.escape(widget.id)}"] .widget__refresh`);
   if (!button) return;
+  button.hidden = !canRefreshHeader(widget);
   const title = refreshButtonTitle(widget);
   button.title = title;
   button.setAttribute("aria-label", title);
@@ -2672,10 +2778,14 @@ function updateSizeOptions() {
   for (const option of f.rows.options) option.disabled = Number(option.value) < min.rows;
   f.size.value = clampSize(f.size.value, f.type.value);
   if (Number(f.rows.value) < min.rows) f.rows.value = String(min.rows);
+  const fixed = FIXED_ROWS[f.type.value];
+  f.rows.disabled = Boolean(fixed);
+  if (fixed) f.rows.value = String(fixed);
   const hint = $("#size-hint");
   const isMin = min.size !== "s" || min.rows > 1;
-  hint.hidden = !isMin;
-  hint.textContent = isMin ? `この種類の最小サイズ：幅 ${SIZE_NAMES[min.size]}・高さ ${min.rows} 段` : "";
+  hint.hidden = !isMin && !fixed;
+  hint.textContent = fixed ? `この種類の高さは ${fixed} 段で固定です`
+    : isMin ? `この種類の最小サイズ：幅 ${SIZE_NAMES[min.size]}・高さ ${min.rows} 段` : "";
 }
 
 el.widgetForm.elements.accent.addEventListener("input", () => {
