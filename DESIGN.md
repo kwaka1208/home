@@ -1,7 +1,7 @@
 # 見た目をカスタマイズする
 
 personal-dashboard の見た目（色・フォント・カードの形・テーマなど）を変える方法です。
-セットアップは [README.md](README.md)、使い方は [USAGE.md](USAGE.md) を見てください。
+セットアップは [README.md](README.md)、使い方は [USAGE.md](USAGE.md)、アドオン（自作ウィジェット）の作り方は [WIDGET.md](WIDGET.md) を見てください。
 
 CSS は役割ごとにファイルを分け、[カスケードレイヤー（`@layer`）](https://developer.mozilla.org/ja/docs/Web/CSS/@layer)で
 優先順位を固定しています。後ろのレイヤーほど強く、**詳細度（セレクターの強さ）を気にせず上書きできます**。
@@ -18,6 +18,8 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | `public/css/components.css` | ウィジェット・リンク・ボタン・ダイアログ | 部品の形を変えたいとき |
 | `public/css/themes.css` | 設定画面で選べるテーマ（変数の上書きだけで作っています） | テーマを増やしたいとき |
 | `public/css/custom.css` | **あなた専用の上書き用（初期状態は空）** | **まずはここに書く** |
+
+アドオン（[WIDGET.md](WIDGET.md)）に書いた `css` は `components` レイヤーに入るので、テーマや `custom.css` からそのまま上書きできます。
 
 ## いちばん簡単な方法：custom.css で変数を上書きする
 
@@ -118,7 +120,7 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | `.app-header`, `.app-header__title` | 上部のヘッダー / ダッシュボード名 |
 | `.app-footer`, `.app-footer__link`, `.app-footer__version` | 画面の下に固定したフッター / このテンプレートの GitHub へのリンク（アイコン） / バージョン番号 |
 | `.dashboard` | ウィジェットを並べるグリッド |
-| `.widget`, `.widget--links` / `--note` / `--clock` / `--search` / `--embed` | ウィジェット（種類別） |
+| `.widget`, `.widget--links` / `--note` / `--clock` / `--search` / `--embed` など | ウィジェット（種類別。アドオンは `.widget--アドオンの type`） |
 | `.widget[data-size="s"]`（`m` `l` `xl`） | 幅ごと |
 | `.widget[data-rows="1"]`（`2` `3` `4`） | 高さ（段数）ごと |
 | `.widget[data-accent]` | ✎ で色を設定したウィジェット（見出しの前に色の丸が付く） |
@@ -133,11 +135,13 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | `.mail`, `.mail__count` | Gmail の未読件数 |
 | `.weather`, `.weather__temp`, `.weather__day` | 天気 / 今の気温 / 1 日分の予報 |
 | `.timer`, `.timer--work` / `--short` / `--long` / `--timer`, `.timer__time`, `.timer__bar-fill` | タイマー（状態別）/ 残り時間 / 進み具合のバー |
-| `.wclock__row`, `.wclock__time`, `.wclock__diff` | 世界時計の 1 都市 / 時刻 / 時差 |
+| `.wclock__row`, `.wclock__label`, `.wclock__time`, `.wclock__diff` | 世界時計の 1 都市 / 表示名 / 時刻 / 時差 |
 | `.habit__table`, `.habit__cell`, `.habit__cell.is-done`, `.is-today` | 習慣トラッカーの表 / 記録の丸 / 記録済み / 今日の列 |
 | `.gh-list`, `.gh-item`, `.gh-list__count` | GitHub の一覧 / 1 件 / 件数 |
 | `.todo__form`, `.todo-chip`, `.todo-group`, `.todo-group__header`, `.todo-item`, `.todo-item--done`, `.todo-item__check` | ToDo の入力欄・絞り込みボタン・カテゴリー・1 件ごとの行 |
 | `.widget.is-drop-target` | URL をドラッグして、ドロップできる状態のリンク集 |
+| `.widget__resize`, `.widget.is-resizing`, `.widget__resize-badge` | 編集中の右下の大きさを変える角 / 大きさを変えている最中のウィジェット / そのとき出る「M（2 列）・2 段」の表示 |
+| `.widget__refresh` | カレンダー・Gmail の見出しの ↻（連携中だけ表示） |
 | `.toast` | 画面下に一時的に出るお知らせ |
 | `.tabs`, `.tab`, `.tab[aria-selected="true"]`, `.tabs__add` | タブ列 / タブ 1 つ / 表示中のタブ / タブの追加ボタン |
 | `.button`, `.button--primary`, `.input`, `.dialog` | ボタン・入力欄・ダイアログ |
