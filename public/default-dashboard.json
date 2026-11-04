@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "title": "My Dashboard",
+  "settings": {
+    "mode": "auto",
+    "preset": "",
+    "openInNewTab": true,
+    "useFavicons": true
+  },
+  "widgets": [
+    {
+      "id": "clock",
+      "type": "clock",
+      "title": "いま",
+      "size": "s",
+      "timeZone": ""
+    },
+    {
+      "id": "search",
+      "type": "search",
+      "title": "Web 検索",
+      "size": "m",
+      "searchUrl": "https://www.google.com/search?q=%s"
+    },
+    {
+      "id": "memo",
+      "type": "note",
+      "title": "メモ",
+      "size": "s",
+      "text": ""
+    },
+    {
+      "id": "google",
+      "type": "links",
+      "title": "Google",
+      "size": "m",
+      "view": "grid",
+      "items": [
+        { "id": "gmail", "title": "Gmail", "url": "https://mail.google.com/" },
+        { "id": "calendar", "title": "カレンダー", "url": "https://calendar.google.com/" },
+        { "id": "drive", "title": "ドライブ", "url": "https://drive.google.com/" },
+        { "id": "docs", "title": "ドキュメント", "url": "https://docs.google.com/document/" },
+        { "id": "sheets", "title": "スプレッドシート", "url": "https://docs.google.com/spreadsheets/" },
+        { "id": "meet", "title": "Meet", "url": "https://meet.google.com/" }
+      ]
+    },
+    {
+      "id": "dev",
+      "type": "links",
+      "title": "開発",
+      "size": "s",
+      "view": "list",
+      "items": [
+        { "id": "github", "title": "GitHub", "url": "https://github.com/", "description": "リポジトリと Issue" },
+        { "id": "cloudflare", "title": "Cloudflare", "url": "https://dash.cloudflare.com/", "description": "Workers / Access" },
+        { "id": "claude", "title": "Claude", "url": "https://claude.ai/" }
+      ]
+    },
+    {
+      "id": "reading",
+      "type": "links",
+      "title": "あとで見る",
+      "size": "s",
+      "view": "list",
+      "items": []
+    }
+  ]
+}
