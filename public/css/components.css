@@ -23,8 +23,9 @@
     min-height: 36px;
     padding: var(--space-1) var(--space-3);
     border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius-sm);
-    background: var(--color-surface);
+    border-radius: var(--button-radius);
+    background: var(--input-bg);
+    box-shadow: var(--button-shadow);
     color: var(--color-text);
     font-size: var(--font-size-sm);
     cursor: pointer;
@@ -55,6 +56,7 @@
   .button--ghost {
     border-color: transparent;
     background: transparent;
+    box-shadow: none;
   }
 
   .button--small {
@@ -73,12 +75,12 @@
     min-height: 36px;
     padding: var(--space-1) var(--space-3);
     border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius-sm);
-    background: var(--color-surface);
+    border-radius: var(--button-radius);
+    background: var(--input-bg);
     color: var(--color-text);
   }
   .input:focus { border-color: var(--color-focus); outline: none; }
-  .input--search { border-radius: 999px; padding-inline: var(--space-4); }
+  .input--search { border-radius: var(--search-radius); padding-inline: var(--space-4); }
   .input--color { width: 56px; padding: 2px; }
 
   .field { display: grid; gap: var(--space-1); }
@@ -124,30 +126,45 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    background: var(--color-surface);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-widget);
+    background: var(--widget-bg);
+    border: var(--widget-border);
+    border-radius: var(--widget-radius);
+    box-shadow: var(--widget-shadow);
+    -webkit-backdrop-filter: var(--widget-backdrop);
+    backdrop-filter: var(--widget-backdrop);
     overflow: hidden;
+    transition: box-shadow var(--transition-fast), translate var(--transition-fast);
   }
+  .widget:hover {
+    box-shadow: var(--widget-shadow-hover);
+    translate: var(--widget-hover-translate);
+  }
+  [data-editing] .widget:hover { translate: none; }
 
   .widget__header {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     min-height: 44px;
-    padding: var(--space-2) var(--widget-padding) 0;
+    margin: 0 var(--widget-padding);
+    padding: var(--space-2) 0 0;
+    border-bottom: var(--widget-header-border);
   }
 
   .widget__title {
     flex: 1;
     min-width: 0;
-    font-size: var(--font-size-md);
-    font-weight: var(--font-weight-bold);
+    font-family: var(--widget-title-font);
+    font-size: var(--widget-title-size);
+    font-weight: var(--widget-title-weight);
+    letter-spacing: var(--widget-title-spacing);
+    text-transform: var(--widget-title-transform);
+    color: var(--widget-title-color);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .widget__title-text::before { content: var(--widget-title-prefix); }
 
   /* 色を設定したウィジェットだけ、見出しの前に小さな丸で色を示す */
   .widget[data-accent] .widget__title::before {
@@ -188,7 +205,7 @@
   /* 編集モード */
   [data-editing] .widget__handle,
   [data-editing] .widget__tools { display: inline-flex; }
-  [data-editing] .widget { border-style: dashed; }
+  [data-editing] .widget { outline: 1px dashed var(--color-text-muted); outline-offset: 3px; }
 
   /* ドラッグ中の見た目（SortableJS が付けるクラス） */
   .is-ghost { opacity: 0.35; }
@@ -199,7 +216,7 @@
     grid-column: span 1;
     min-height: 120px;
     border: 2px dashed var(--color-border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--widget-radius);
     background: transparent;
     color: var(--color-text-muted);
     font-size: var(--font-size-md);
@@ -242,11 +259,11 @@
     flex: 1;
     min-width: 0;
     padding: var(--space-2);
-    border-radius: var(--radius-sm);
+    border-radius: var(--link-radius);
     text-decoration: none;
-    transition: background var(--transition-fast);
+    transition: background var(--transition-fast), color var(--transition-fast);
   }
-  .link:hover { background: var(--color-surface-hover); }
+  .link:hover { background: var(--link-hover-bg); color: var(--link-hover-color); }
 
   .link__icon {
     display: inline-grid;
@@ -274,7 +291,7 @@
     white-space: nowrap;
   }
   .link__desc {
-    color: var(--color-text-muted);
+    color: color-mix(in srgb, currentColor 65%, transparent);
     font-size: var(--font-size-xs);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -287,9 +304,10 @@
     gap: var(--space-2);
     padding: var(--space-3) var(--space-2);
     text-align: center;
-    background: var(--color-surface-muted);
+    background: var(--tile-bg);
+    border: var(--tile-border);
   }
-  .link-list--grid .link:hover { background: var(--color-surface-hover); }
+  .link-list--grid .link:hover { background: var(--link-hover-bg); color: var(--link-hover-color); }
   .link-list--grid .link__icon {
     width: var(--icon-size-tile);
     height: var(--icon-size-tile);
@@ -321,8 +339,8 @@
     min-height: 140px;
     padding: var(--space-2);
     border: var(--border-width) solid transparent;
-    border-radius: var(--radius-sm);
-    background: var(--color-surface-muted);
+    border-radius: var(--link-radius);
+    background: var(--note-bg);
     color: var(--color-text);
     line-height: var(--line-height);
     resize: vertical;
@@ -332,10 +350,13 @@
   /* ---------- 時計 ---------- */
   .clock { display: grid; gap: var(--space-1); padding: var(--space-2) 0; }
   .clock__time {
-    font-family: var(--font-mono);
+    font-family: var(--clock-font);
     font-size: var(--font-size-clock);
+    font-weight: var(--clock-weight);
     font-variant-numeric: tabular-nums;
     line-height: 1.1;
+    color: var(--clock-color);
+    text-shadow: var(--clock-glow);
   }
   .clock__date { color: var(--color-text-muted); font-size: var(--font-size-sm); }
 
@@ -347,8 +368,8 @@
     display: block;
     width: 100%;
     border: 0;
-    border-radius: var(--radius-sm);
-    background: var(--color-surface-muted);
+    border-radius: var(--link-radius);
+    background: var(--note-bg);
   }
 
   /* ---------- ダイアログ ---------- */
@@ -358,10 +379,12 @@
     padding: 0;
     border: var(--border-width) solid var(--color-border);
     border-radius: var(--radius-lg);
-    background: var(--color-surface);
+    /* 半透明のカード色のテーマでも、ダイアログは背景が透けないようにする */
+    background: linear-gradient(var(--color-surface), var(--color-surface)), var(--color-bg);
     color: var(--color-text);
     box-shadow: var(--shadow-raised);
   }
+  .dialog--wide { width: min(640px, calc(100vw - 2 * var(--space-4))); }
   .dialog::backdrop { background: var(--color-backdrop); }
 
   .dialog__body {
@@ -377,4 +400,121 @@
     padding-top: var(--space-2);
   }
   .dialog__spacer { flex: 1; }
+  .fieldset--plain { padding: 0; border: 0; }
+
+  /* ---------- テーマ選択（設定画面） ---------- */
+  .theme-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr));
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+  }
+
+  .theme-option {
+    display: grid;
+    gap: var(--space-1);
+    cursor: pointer;
+  }
+  .theme-option__input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .theme-option__label {
+    font-size: var(--font-size-sm);
+    text-align: center;
+  }
+  .theme-option__note {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+  }
+
+  /*
+   * 見本は data-preset を持つので、中ではそのテーマのトークンが効きます。
+   * そのため、ここではトークンだけを使って小さなダッシュボードを描きます。
+   */
+  .theme-preview {
+    display: grid;
+    gap: 6px;
+    height: 104px;
+    padding: 10px;
+    border-radius: 10px;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    background: var(--page-bg);
+    color: var(--color-text);
+    overflow: hidden;
+    transition: outline-color var(--transition-fast);
+  }
+  .theme-option__input:checked + .theme-preview { outline-color: var(--color-focus); }
+  .theme-option__input:focus-visible + .theme-preview { outline-color: var(--color-text-muted); }
+
+  .theme-preview__title {
+    font-family: var(--app-title-font);
+    font-size: 12px;
+    font-weight: var(--app-title-weight);
+    letter-spacing: var(--app-title-spacing);
+    text-transform: var(--app-title-transform);
+    color: var(--app-title-color);
+    background: var(--app-title-fill);
+    -webkit-background-clip: text;
+    background-clip: text;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .theme-preview__cards {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 6px;
+    min-height: 0;
+  }
+
+  .theme-preview__card {
+    display: grid;
+    align-content: start;
+    gap: 5px;
+    padding: 7px;
+    background: var(--widget-bg);
+    border: var(--widget-border);
+    border-radius: calc(var(--widget-radius) * 0.5);
+    box-shadow: var(--widget-shadow);
+    -webkit-backdrop-filter: var(--widget-backdrop);
+    backdrop-filter: var(--widget-backdrop);
+    min-width: 0;
+    overflow: hidden;
+  }
+  .theme-preview__heading {
+    font-family: var(--widget-title-font);
+    font-size: 9px;
+    font-weight: var(--widget-title-weight);
+    letter-spacing: var(--widget-title-spacing);
+    text-transform: var(--widget-title-transform);
+    color: var(--widget-title-color);
+    line-height: 1.2;
+    padding-bottom: 2px;
+    border-bottom: var(--widget-header-border);
+    white-space: nowrap;
+  }
+  .theme-preview__heading::before { content: var(--widget-title-prefix); }
+  .theme-preview__line {
+    height: 5px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--color-text) 22%, transparent);
+  }
+  .theme-preview__line--short { width: 60%; }
+  .theme-preview__clock {
+    font-family: var(--clock-font);
+    font-size: 15px;
+    font-weight: var(--clock-weight);
+    color: var(--clock-color);
+    text-shadow: var(--clock-glow);
+    line-height: 1;
+  }
+  .theme-preview__chip {
+    width: 40%;
+    height: 8px;
+    border-radius: var(--button-radius);
+    background: var(--color-accent);
+  }
 }

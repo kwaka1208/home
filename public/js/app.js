@@ -8,7 +8,7 @@
  * {
  *   "version": 1,
  *   "title": "Dashboard",
- *   "settings": { "mode": "auto", "preset": "", "openInNewTab": true, "useFavicons": true },
+ *   "settings": { "mode": "auto", "preset": "", "density": "normal", "openInNewTab": true, "useFavicons": true },
  *   "widgets": [
  *     { "id": "...", "type": "links", "title": "...", "size": "m", "view": "list",
  *       "accent": "#2f6f5e", "items": [ { "id": "...", "title": "...", "url": "...", "icon": "", "description": "" } ] },
@@ -30,7 +30,7 @@ const WIDGET_TYPES = {
   embed: "埋め込み",
 };
 const SIZES = ["s", "m", "l", "xl"];
-const DEFAULT_SETTINGS = { mode: "auto", preset: "", openInNewTab: true, useFavicons: true };
+const DEFAULT_SETTINGS = { mode: "auto", preset: "", density: "normal", openInNewTab: true, useFavicons: true };
 const DEFAULT_SEARCH_URL = "https://www.google.com/search?q=%s";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -54,7 +54,7 @@ const el = {
   linkDelete: $("#link-delete"),
   settingsDialog: $("#settings-dialog"),
   settingsForm: $("#settings-form"),
-  presetSelect: $("#preset-select"),
+  themePicker: $("#theme-picker"),
   exportButton: $("#export-button"),
   importInput: $("#import-input"),
   resetButton: $("#reset-button"),
@@ -122,6 +122,12 @@ function normalize(data) {
     settings: { ...DEFAULT_SETTINGS, ...(data?.settings || {}) },
     widgets: [],
   };
+  // 旧バージョンの「コンパクト」テーマは表示密度の設定に移した
+  if (out.settings.preset === "compact") {
+    out.settings.preset = "";
+    out.settings.density = "compact";
+  }
+  if (!THEME_PRESETS.some((p) => p.id === out.settings.preset)) out.settings.preset = "";
   for (const w of Array.isArray(data?.widgets) ? data.widgets : []) {
     if (!w || !WIDGET_TYPES[w.type]) continue;
     const widget = {
@@ -192,12 +198,14 @@ window.addEventListener("beforeunload", (event) => {
 /* 描画                                                                 */
 /* ================================================================== */
 
-function applySettings() {
-  const { mode, preset } = state.settings;
+function applySettings(settings = state.settings) {
+  const { mode, preset, density } = settings;
   if (mode === "light" || mode === "dark") el.root.dataset.mode = mode;
   else delete el.root.dataset.mode;
   if (preset) el.root.dataset.preset = preset;
   else delete el.root.dataset.preset;
+  if (density === "compact") el.root.dataset.density = density;
+  else delete el.root.dataset.density;
   el.title.textContent = state.title || "Dashboard";
   document.title = state.title || "Dashboard";
 }
@@ -260,7 +268,7 @@ function renderWidget(widget) {
   section.append(
     h("header", { class: "widget__header" },
       h("span", { class: "widget__handle", title: "ドラッグで移動", "aria-hidden": "true" }, "⠿"),
-      h("h2", { class: "widget__title" }, widget.title || ""),
+      h("h2", { class: "widget__title" }, h("span", { class: "widget__title-text" }, widget.title || "")),
       tools,
     ),
     h("div", { class: "widget__body" }, renderWidgetBody(widget)),
@@ -671,30 +679,52 @@ el.linkDelete.addEventListener("click", () => {
 /* 設定                                                                 */
 /* ================================================================== */
 
-el.presetSelect.replaceChildren(...THEME_PRESETS.map((p) => h("option", { value: p.id }, p.label)));
+/** テーマの見本。data-preset を持たせると、中はそのテーマの CSS 変数で描かれる */
+el.themePicker.replaceChildren(
+  ...THEME_PRESETS.map((p) =>
+    h("label", { class: "theme-option" },
+      h("input", { type: "radio", name: "preset", value: p.id, class: "theme-option__input" }),
+      h("span", { class: "theme-preview", dataset: { preset: p.id || "default" }, "aria-hidden": "true" },
+        h("span", { class: "theme-preview__title" }, "Dashboard"),
+        h("span", { class: "theme-preview__cards" },
+          h("span", { class: "theme-preview__card" },
+            h("span", { class: "theme-preview__heading" }, "Links"),
+            h("span", { class: "theme-preview__line" }),
+            h("span", { class: "theme-preview__line theme-preview__line--short" }),
+            h("span", { class: "theme-preview__chip" }),
+          ),
+          h("span", { class: "theme-preview__card" },
+            h("span", { class: "theme-preview__heading" }, "Clock"),
+            h("span", { class: "theme-preview__clock" }, "9:41"),
+          ),
+        ),
+      ),
+      h("span", { class: "theme-option__label" },
+        p.label,
+        p.note ? h("span", { class: "theme-option__note" }, `（${p.note}）`) : null,
+      ),
+    ),
+  ),
+);
 
 el.settingsOpen.addEventListener("click", () => {
   const f = el.settingsForm.elements;
   f.title.value = state.title;
   f.mode.value = state.settings.mode;
   f.preset.value = state.settings.preset;
+  f.density.value = state.settings.density;
   f.openInNewTab.checked = state.settings.openInNewTab;
   f.useFavicons.checked = state.settings.useFavicons;
   el.settingsDialog.returnValue = "";
   el.settingsDialog.showModal();
 });
 
-// 配色とテーマは選んだ時点でプレビューする
-for (const name of ["mode", "preset"]) {
-  el.settingsForm.elements[name].addEventListener("change", () => {
-    const f = el.settingsForm.elements;
-    const preview = { ...state.settings, mode: f.mode.value, preset: f.preset.value };
-    const saved = state.settings;
-    state.settings = preview;
-    applySettings();
-    state.settings = saved;
-  });
-}
+// 配色・テーマ・表示密度は選んだ時点で画面に反映して見せる（保存はまだ）
+el.settingsForm.addEventListener("change", (event) => {
+  if (!["mode", "preset", "density"].includes(event.target.name)) return;
+  const f = el.settingsForm.elements;
+  applySettings({ ...state.settings, mode: f.mode.value, preset: f.preset.value, density: f.density.value });
+});
 
 el.settingsDialog.addEventListener("close", () => {
   if (el.settingsDialog.returnValue === "ok") {
@@ -703,6 +733,7 @@ el.settingsDialog.addEventListener("close", () => {
     state.settings = {
       mode: f.mode.value,
       preset: f.preset.value,
+      density: f.density.value === "compact" ? "compact" : "normal",
       openInNewTab: f.openInNewTab.checked,
       useFavicons: f.useFavicons.checked,
     };

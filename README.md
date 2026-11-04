@@ -169,7 +169,7 @@ Worker がトークンを検証するために、次の値を設定します。
 | リンクを追加 | 編集中に、リンク集の見出し右の **＋** |
 | リンクを編集・削除 | 編集中に、リンクをクリック（または **✎**） |
 | リンクを絞り込む | 上部の検索欄（`/` キーで移動、Enter で先頭のリンクを開く） |
-| 配色・テーマ・バックアップ | 右上の **⚙** |
+| テーマ・配色・表示密度・バックアップ | 右上の **⚙** |
 
 スマートフォンでは、少し長押ししてからドラッグすると並べ替えられます。
 
@@ -188,6 +188,24 @@ Worker がトークンを検証するために、次の値を設定します。
 
 > アイコン未設定のリンクは、Google のファビコン取得サービスからアイコンを読み込みます
 > （リンク先のドメイン名が Google に送られます）。気になる場合は ⚙ でオフにできます。
+
+### テーマ
+
+⚙ の設定画面に各テーマの見本が並んでいて、クリックするとその場で画面全体が切り替わります
+（「保存」を押すと確定、「キャンセル」で元に戻ります）。
+
+| テーマ | 雰囲気 |
+|---|---|
+| 標準 | 生成りの背景に白いカード。落ち着いた緑のアクセント |
+| グラス | にじんだ色の背景に、すりガラスのような半透明カード |
+| ブルータル | 太い黒線とずらした影、黄色のアクセント。大文字の見出し |
+| ターミナル | 黒地に蛍光グリーンの等幅文字。時計が光る（常にダーク） |
+| ミッドナイト | 濃紺と金。字間を広げた上品な見出し（ライトでは生成りと金） |
+| エディトリアル | 雑誌のように箱をなくし、太い罫線と余白で区切る。明朝体の見出し |
+| 藍 / 和紙 / モノクロ | 標準の形のまま、色合いだけを変えたもの |
+
+どのテーマも、配色（OS に合わせる / ライト / ダーク）と表示密度（標準 / コンパクト）を組み合わせられます。
+フォントは各 OS に最初から入っているものだけを使います（明朝体の見出しも、ヒラギノ明朝・游明朝などの OS 標準フォントです）。
 
 ### バックアップ
 
@@ -211,7 +229,7 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | `public/css/base.css` | リセットと文字の基本設定 | ふつうは触らない |
 | `public/css/layout.css` | ヘッダー・グリッド・レスポンシブ | 列の割り当てを変えたいとき |
 | `public/css/components.css` | ウィジェット・リンク・ボタン・ダイアログ | 部品の形を変えたいとき |
-| `public/css/themes.css` | 設定画面で選べるテーマのプリセット | テーマを増やしたいとき |
+| `public/css/themes.css` | 設定画面で選べるテーマ（変数の上書きだけで作っています） | テーマを増やしたいとき |
 | `public/css/custom.css` | **あなた専用の上書き用（初期状態は空）** | **まずはここに書く** |
 
 ### いちばん簡単な方法：custom.css で変数を上書きする
@@ -226,10 +244,13 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
     --color-bg:     light-dark(#f7f4fb, #15121a);
     --radius-lg: 20px;
     --grid-columns: 5;   /* 広い画面での列数 */
-    --font-sans: "BIZ UDPGothic", sans-serif;
+    --font-heading: var(--font-serif);   /* 見出しだけ明朝体に */
   }
 }
 ```
+
+ここで書いた値は、どのテーマを選んでいても優先されます。
+特定のテーマのときだけ変えたい場合は `:root[data-preset="glass"] { ... }` のように書きます。
 
 本家は `custom.css` を空のまま保つので、本家の更新を取り込むときに衝突しません。
 
@@ -237,12 +258,13 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 
 | 変数 | 意味 |
 |---|---|
-| `--color-bg` / `--color-surface` | ページの背景 / ウィジェットの背景 |
+| `--color-bg` / `--color-surface` | ページの背景色 / カードの背景色 |
 | `--color-surface-muted` / `--color-surface-hover` | 控えめな面（タイル・メモ欄）/ ホバー時 |
 | `--color-text` / `--color-text-muted` | 文字色 / 補足の文字色 |
 | `--color-accent` / `--color-accent-contrast` | アクセント色 / その上に載せる文字色 |
 | `--color-border` / `--color-danger` / `--color-focus` | 枠線 / 削除ボタン / フォーカス枠 |
-| `--font-sans` / `--font-mono` | 本文 / 時計のフォント（標準は各 OS のシステムフォント） |
+| `--font-sans` / `--font-serif` / `--font-mono` | 本文 / 明朝体 / 等幅のフォント（すべて各 OS の標準フォント） |
+| `--font-heading` | 見出し（ダッシュボード名・ウィジェット名）のフォント |
 | `--font-size-*`（`xs` `sm` `md` `lg` `xl` `clock`） | 文字サイズ |
 | `--space-1` 〜 `--space-6` | 余白の段階（4px 〜 32px） |
 | `--radius-sm` / `--radius-md` / `--radius-lg` | 角丸 |
@@ -253,19 +275,39 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | `--link-tile-min` / `--icon-size` / `--icon-size-tile` | タイル 1 個の最小幅 / アイコンの大きさ |
 | `--widget-accent` | ウィジェットごとの色（✎ で設定した色が入る。未設定なら `--color-accent`） |
 
+ページやカードの「形」を決める変数もあります。テーマはこれらの組み合わせでできています。
+
+| 変数 | 意味 | 例 |
+|---|---|---|
+| `--page-bg` | ページの背景（グラデーションや画像も可） | `radial-gradient(...), var(--color-bg)` |
+| `--header-bg` / `--header-border` | 上部ヘッダーの背景 / 下線 | `transparent` / `2px solid` |
+| `--app-title-font` / `-size` / `-weight` / `-spacing` / `-transform` / `-color` | ダッシュボード名の文字組み | `0.12em` / `uppercase` |
+| `--app-title-fill` | ダッシュボード名をグラデーション文字に（`--app-title-color: transparent` と併用） | `linear-gradient(90deg, #f0c, #0cf)` |
+| `--widget-bg` / `--widget-border` / `--widget-radius` | カードの背景 / 枠線 / 角丸 | `transparent` / `0` / `22px` |
+| `--widget-shadow` / `--widget-shadow-hover` | カードの影 / ホバー時の影 | `5px 5px 0 #111` |
+| `--widget-hover-translate` | ホバー時にカードをずらす量 | `-3px -3px` |
+| `--widget-backdrop` | カードの背後のぼかし（すりガラス） | `blur(18px) saturate(1.5)` |
+| `--widget-header-border` | ウィジェット名の下線 | `2px solid var(--color-text)` |
+| `--widget-title-font` / `-size` / `-weight` / `-spacing` / `-transform` / `-color` | ウィジェット名の文字組み | `0.18em` / `uppercase` |
+| `--widget-title-prefix` | ウィジェット名の前に付ける文字 | `"> "` |
+| `--link-radius` / `--link-hover-bg` / `--link-hover-color` | リンクの角丸 / ホバー時の背景・文字色 | `0` / `var(--color-accent)` |
+| `--tile-bg` / `--tile-border` | タイル表示のリンクの背景 / 枠線 | `transparent` / `1px solid` |
+| `--button-radius` / `--button-shadow` / `--input-bg` / `--search-radius` | ボタン・入力欄の形 | `0` / `3px 3px 0 #111` |
+| `--note-bg` | メモ欄の背景 | |
+| `--clock-font` / `--clock-weight` / `--clock-color` / `--clock-glow` | 時計の文字 | `0 0 14px rgb(61 255 139 / 0.55)` |
+
 ### 部品ごとに変える
 
 クラス名は「部品\_\_要素--状態」（BEM）で付けています。
 
 ```css
 @layer custom {
-  /* 壁紙を敷いて、ウィジェットをすりガラス風に */
-  body {
-    background: url("../images/wallpaper.jpg") center / cover fixed;
-  }
-  .widget {
-    background: color-mix(in srgb, var(--color-surface) 75%, transparent);
-    backdrop-filter: blur(10px);
+  /* 壁紙を敷いて、カードをすりガラス風に（変数だけで書けます） */
+  :root {
+    --page-bg: url("../images/wallpaper.jpg") center / cover, var(--color-bg);
+    --widget-bg: color-mix(in srgb, var(--color-surface) 70%, transparent);
+    --widget-backdrop: blur(12px);
+    --header-bg: transparent;
   }
 
   /* 特定の種類のウィジェットだけ変える */
@@ -289,32 +331,40 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | `.widget`, `.widget--links` / `--note` / `--clock` / `--search` / `--embed` | ウィジェット（種類別） |
 | `.widget[data-size="s"]`（`m` `l` `xl`） | 幅ごと |
 | `.widget[data-accent]` | ✎ で色を設定したウィジェット（見出しの前に色の丸が付く） |
-| `.widget__header`, `.widget__title`, `.widget__body` | ウィジェットの見出し・本文 |
+| `.widget__header`, `.widget__title`, `.widget__title-text`, `.widget__body` | ウィジェットの見出し・本文 |
 | `.link-list--list`, `.link-list--grid` | リンクのリスト表示 / タイル表示 |
 | `.link`, `.link__icon`, `.link__title`, `.link__desc` | リンク 1 件 |
 | `.note`, `.clock__time`, `.clock__date`, `.web-search`, `.embed` | 各ウィジェットの中身 |
 | `.button`, `.button--primary`, `.input`, `.dialog` | ボタン・入力欄・ダイアログ |
 | `html[data-mode="light"]`（`dark`） | 配色を固定しているとき（自動のときは付かない） |
-| `html[data-preset="..."]` | テーマのプリセットを選んでいるとき |
+| `html[data-preset="..."]` | テーマを選んでいるとき（標準のときは付かない） |
+| `html[data-density="compact"]` | 表示密度「コンパクト」のとき |
 | `html[data-editing]` | 編集モード中 |
 
-### テーマのプリセットを増やす
+### テーマを増やす
 
 設定画面の「テーマ」に選択肢を足すこともできます。
 
-1. `public/css/themes.css` にブロックを追加します。
+1. `public/css/themes.css` にブロックを追加します。**変数の上書きだけで書く**のがルールです。
+   こうすると、設定画面の見本も自動でそのテーマの見た目になります
+   （見本の要素にも `data-preset` が付いていて、中では同じ変数が使われるため）。
+   セレクターは `:root[...]` ではなく `[data-preset="..."]` と書いてください。
 
    ```css
    @layer themes {
-     :root[data-preset="sakura"] {
+     [data-preset="sakura"] {
        --color-bg:     light-dark(#fdf3f5, #1c1416);
        --color-accent: light-dark(#c2185b, #f48fb1);
-       --color-focus:  light-dark(#c2185b, #f48fb1);
+       --page-bg: linear-gradient(160deg, light-dark(#ffe4ec, #2a1520), var(--color-bg) 60%);
+       --widget-radius: 24px;
+       --widget-title-prefix: "🌸 ";
      }
    }
    ```
 
 2. `public/js/config.js` の `THEME_PRESETS` に `{ id: "sakura", label: "桜" }` を追加します。
+
+常にダークで表示したいテーマは、ブロックの中に `color-scheme: dark;` を書きます（「ターミナル」がこの例です）。
 
 ### 初期レイアウトを変える
 

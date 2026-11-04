@@ -10,6 +10,13 @@
     position: sticky;
     top: 0;
     z-index: 10;
+    background: var(--header-bg);
+    border-bottom: var(--header-border);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+
+  .app-header__inner {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -17,14 +24,19 @@
     max-width: var(--page-max-width);
     margin: 0 auto;
     padding: var(--space-4) var(--page-gutter);
-    background: var(--color-bg);
   }
 
   .app-header__title {
-    font-size: var(--font-size-xl);
-    font-weight: var(--font-weight-bold);
-    letter-spacing: 0.01em;
     margin-right: auto;
+    font-family: var(--app-title-font);
+    font-size: var(--app-title-size);
+    font-weight: var(--app-title-weight);
+    letter-spacing: var(--app-title-spacing);
+    text-transform: var(--app-title-transform);
+    color: var(--app-title-color);
+    background: var(--app-title-fill);
+    -webkit-background-clip: text;
+    background-clip: text;
     overflow-wrap: anywhere;
   }
 

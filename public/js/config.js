@@ -2,13 +2,20 @@
  * config.js — フォークした人が触ってよい設定
  */
 
-/** 設定画面の「テーマ」に並ぶ選択肢。id は css/themes.css の data-preset と対応 */
+/**
+ * 設定画面の「テーマ」に並ぶ選択肢。id は css/themes.css の data-preset と対応。
+ * note は見本の下に小さく表示される補足（任意）。
+ */
 export const THEME_PRESETS = [
   { id: "", label: "標準" },
+  { id: "glass", label: "グラス" },
+  { id: "brutal", label: "ブルータル" },
+  { id: "terminal", label: "ターミナル", note: "常にダーク" },
+  { id: "midnight", label: "ミッドナイト" },
+  { id: "editorial", label: "エディトリアル" },
   { id: "indigo", label: "藍" },
   { id: "washi", label: "和紙" },
   { id: "mono", label: "モノクロ" },
-  { id: "compact", label: "コンパクト" },
 ];
 
 /** 初めて開いたとき（保存データがないとき）に読み込むレイアウト */
