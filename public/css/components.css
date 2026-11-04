@@ -653,6 +653,20 @@
     color: var(--color-danger);
     font-size: var(--font-size-sm);
   }
+  /* 見出しの右の更新ボタン（カレンダー） */
+  .widget__refresh {
+    flex: none;
+    color: var(--color-text-muted);
+  }
+  .widget__refresh.is-loading { animation: widget-refresh-spin 1s linear infinite; }
+  @keyframes widget-refresh-spin { to { rotate: 360deg; } }
+
+  .google-error__link {
+    display: inline-block;
+    margin-top: var(--space-1);
+    color: var(--color-accent);
+    font-weight: var(--font-weight-bold);
+  }
 
   .cal { display: grid; gap: var(--space-3); }
   .cal-day__label {
