@@ -8,7 +8,8 @@
  * {
  *   "version": 1,
  *   "title": "Dashboard",
- *   "settings": { "mode": "auto", "preset": "", "density": "normal", "openInNewTab": true, "useFavicons": true },
+ *   "settings": { "mode": "auto", "preset": "", "density": "normal", "alignRows": true,
+ *                 "openInNewTab": true, "useFavicons": true },
  *   "widgets": [
  *     { "id": "...", "type": "links", "title": "...", "size": "m", "view": "list",
  *       "accent": "#2f6f5e", "items": [ { "id": "...", "title": "...", "url": "...", "icon": "", "description": "" } ] },
@@ -36,7 +37,14 @@ const WIDGET_TYPES = {
 };
 const DEFAULT_TODO_CATEGORIES = ["仕事", "プライベート"];
 const SIZES = ["s", "m", "l", "xl"];
-const DEFAULT_SETTINGS = { mode: "auto", preset: "", density: "normal", openInNewTab: true, useFavicons: true };
+const DEFAULT_SETTINGS = {
+  mode: "auto",
+  preset: "",
+  density: "normal",
+  alignRows: true,
+  openInNewTab: true,
+  useFavicons: true,
+};
 const DEFAULT_SEARCH_URL = "https://www.google.com/search?q=%s";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -232,7 +240,9 @@ window.addEventListener("beforeunload", (event) => {
 /* ================================================================== */
 
 function applySettings(settings = state.settings) {
-  const { mode, preset, density } = settings;
+  const { mode, preset, density, alignRows } = settings;
+  if (alignRows === false) el.root.dataset.rowAlign = "start";
+  else delete el.root.dataset.rowAlign;
   if (mode === "light" || mode === "dark") el.root.dataset.mode = mode;
   else delete el.root.dataset.mode;
   if (preset) el.root.dataset.preset = preset;
@@ -1139,17 +1149,24 @@ el.settingsOpen.addEventListener("click", () => {
   f.mode.value = state.settings.mode;
   f.preset.value = state.settings.preset;
   f.density.value = state.settings.density;
+  f.alignRows.checked = state.settings.alignRows;
   f.openInNewTab.checked = state.settings.openInNewTab;
   f.useFavicons.checked = state.settings.useFavicons;
   el.settingsDialog.returnValue = "";
   el.settingsDialog.showModal();
 });
 
-// 配色・テーマ・表示密度は選んだ時点で画面に反映して見せる（保存はまだ）
+// 配色・テーマ・表示密度・高さのそろえ方は選んだ時点で画面に反映して見せる（保存はまだ）
 el.settingsForm.addEventListener("change", (event) => {
-  if (!["mode", "preset", "density"].includes(event.target.name)) return;
+  if (!["mode", "preset", "density", "alignRows"].includes(event.target.name)) return;
   const f = el.settingsForm.elements;
-  applySettings({ ...state.settings, mode: f.mode.value, preset: f.preset.value, density: f.density.value });
+  applySettings({
+    ...state.settings,
+    mode: f.mode.value,
+    preset: f.preset.value,
+    density: f.density.value,
+    alignRows: f.alignRows.checked,
+  });
 });
 
 el.settingsDialog.addEventListener("close", () => {
@@ -1160,6 +1177,7 @@ el.settingsDialog.addEventListener("close", () => {
       mode: f.mode.value,
       preset: f.preset.value,
       density: f.density.value === "compact" ? "compact" : "normal",
+      alignRows: f.alignRows.checked,
       openInNewTab: f.openInNewTab.checked,
       useFavicons: f.useFavicons.checked,
     };

@@ -69,11 +69,15 @@
     display: grid;
     grid-template-columns: repeat(var(--grid-columns), minmax(0, 1fr));
     gap: var(--grid-gap);
-    align-items: start;
+    /* 同じ行のウィジェットは、いちばん高いものに高さをそろえる */
+    align-items: stretch;
     max-width: var(--page-max-width);
     margin: 0 auto;
     padding: var(--space-2) var(--page-gutter) var(--space-6);
   }
+
+  /* 設定で「高さをそろえる」をオフにしたとき：それぞれの中身の高さのまま */
+  [data-row-align="start"] .dashboard { align-items: start; }
 
   .dashboard > [data-size="s"]  { grid-column: span var(--span-s); }
   .dashboard > [data-size="m"]  { grid-column: span var(--span-m); }

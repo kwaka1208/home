@@ -230,9 +230,17 @@
   .widget__tools { display: none; gap: var(--space-1); }
 
   .widget__body {
+    flex: 1 1 auto; /* 高さをそろえたとき、余った分は本文が受け持つ */
     padding: var(--space-2) var(--widget-padding) var(--widget-padding);
     min-width: 0;
   }
+
+  /* メモ欄は、そろえた高さいっぱいまで広げる */
+  .widget--note .widget__body {
+    display: flex;
+    flex-direction: column;
+  }
+  .widget--note .note { flex: 1 1 auto; }
 
   .widget__empty {
     color: var(--color-text-muted);
