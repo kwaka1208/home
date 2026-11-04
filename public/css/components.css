@@ -159,24 +159,34 @@
   .signin__text { color: var(--color-text-muted); font-size: var(--font-size-sm); }
 
   /* ---------- タブ ---------- */
+  /* タブ列：タブを左から並べ、「＋ タブを追加」はいちばん右のタブのすぐ右に置く。下線はタブ列の全幅に引く */
   .tabs {
+    position: relative;
     display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
+    align-items: center;
     gap: var(--space-2);
     max-width: var(--page-max-width);
     margin: 0 auto var(--space-2);
     padding: 0 var(--page-gutter);
   }
   .tabs[hidden] { display: none; }
+  .tabs::before {
+    content: "";
+    position: absolute;
+    right: var(--page-gutter);
+    bottom: 0;
+    left: var(--page-gutter);
+    height: var(--border-width);
+    background: var(--color-border);
+  }
 
   .tabs__list {
+    position: relative; /* 表示中のタブの下線を、全幅の線より手前に出す */
     display: flex;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     gap: var(--space-1);
     min-width: 0;
     overflow-x: auto;
-    border-bottom: var(--border-width) solid var(--color-border);
     scrollbar-width: thin;
   }
 

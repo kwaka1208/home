@@ -21,8 +21,15 @@ export const THEME_PRESETS = [
 /** 初めて開いたとき（保存データがないとき）に読み込むレイアウト */
 export const DEFAULT_DASHBOARD_URL = "default-dashboard.json";
 
-/** アイコン未設定のリンクに使うファビコン取得サービス。{domain} がドメイン名に置き換わる */
-export const FAVICON_URL = "https://www.google.com/s2/favicons?domain={domain}&sz=64";
+/**
+ * アイコン未設定のリンクに使うファビコン取得サービス（Chrome などが使っている Google のサービス）。
+ * {url} は「ドメイン＋最初の階層」（例：https://docs.google.com/document/）に置き換わるので、
+ * Google ドキュメント・スプレッドシートのように同じドメインでもページごとのアイコンが出る。
+ * 文書の ID や検索条件など、それより後ろの部分は送らない。
+ * ここで見つからなければ、サイト自身の /favicon.ico、それもなければ頭文字を表示する。
+ */
+export const FAVICON_URL =
+  "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=64&url={url}";
 
 /** 編集してから保存するまでの待ち時間（ミリ秒） */
 export const SAVE_DELAY_MS = 800;
