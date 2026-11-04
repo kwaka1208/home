@@ -1,7 +1,7 @@
 # 見た目をカスタマイズする
 
 personal-dashboard の見た目（色・フォント・カードの形・テーマなど）を変える方法です。
-セットアップや使い方は [README.md](README.md) を見てください。
+セットアップは [README.md](README.md)、使い方は [USAGE.md](USAGE.md) を見てください。
 
 CSS は役割ごとにファイルを分け、[カスケードレイヤー（`@layer`）](https://developer.mozilla.org/ja/docs/Web/CSS/@layer)で
 優先順位を固定しています。後ろのレイヤーほど強く、**詳細度（セレクターの強さ）を気にせず上書きできます**。
