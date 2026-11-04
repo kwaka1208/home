@@ -1,6 +1,6 @@
 {
   // Cloudflare Workers の設定ファイル
-  // フォークした人もこのファイルは基本的にそのままで動きます。
+  // テンプレートから作ったリポジトリでも、このファイルは基本的にそのままで動きます。
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "personal-dashboard",
   "main": "src/worker.js",
