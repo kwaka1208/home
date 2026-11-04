@@ -5,7 +5,8 @@
     "mode": "auto",
     "preset": "",
     "openInNewTab": true,
-    "useFavicons": true
+    "useFavicons": true,
+    "layout": "tile"
   },
   "widgets": [
     {
@@ -13,21 +14,16 @@
       "type": "clock",
       "title": "いま",
       "size": "s",
-      "timeZone": ""
+      "timeZone": "",
+      "rows": 1
     },
     {
       "id": "search",
       "type": "search",
       "title": "Web 検索",
-      "size": "m",
-      "searchUrl": "https://www.google.com/search?q=%s"
-    },
-    {
-      "id": "memo",
-      "type": "note",
-      "title": "メモ",
-      "size": "s",
-      "text": ""
+      "size": "l",
+      "searchUrl": "https://www.google.com/search?q=%s",
+      "rows": 1
     },
     {
       "id": "google",
@@ -36,13 +32,69 @@
       "size": "m",
       "view": "grid",
       "items": [
-        { "id": "gmail", "title": "Gmail", "url": "https://mail.google.com/" },
-        { "id": "calendar", "title": "カレンダー", "url": "https://calendar.google.com/" },
-        { "id": "drive", "title": "ドライブ", "url": "https://drive.google.com/" },
-        { "id": "docs", "title": "ドキュメント", "url": "https://docs.google.com/document/" },
-        { "id": "sheets", "title": "スプレッドシート", "url": "https://docs.google.com/spreadsheets/" },
-        { "id": "meet", "title": "Meet", "url": "https://meet.google.com/" }
-      ]
+        {
+          "id": "gmail",
+          "title": "Gmail",
+          "url": "https://mail.google.com/"
+        },
+        {
+          "id": "calendar",
+          "title": "カレンダー",
+          "url": "https://calendar.google.com/"
+        },
+        {
+          "id": "drive",
+          "title": "ドライブ",
+          "url": "https://drive.google.com/"
+        },
+        {
+          "id": "docs",
+          "title": "ドキュメント",
+          "url": "https://docs.google.com/document/"
+        },
+        {
+          "id": "sheets",
+          "title": "スプレッドシート",
+          "url": "https://docs.google.com/spreadsheets/"
+        },
+        {
+          "id": "meet",
+          "title": "Meet",
+          "url": "https://meet.google.com/"
+        }
+      ],
+      "rows": 2
+    },
+    {
+      "id": "todo",
+      "type": "todo",
+      "title": "ToDo",
+      "size": "m",
+      "categories": [
+        {
+          "id": "work",
+          "name": "仕事"
+        },
+        {
+          "id": "private",
+          "name": "プライベート"
+        }
+      ],
+      "items": [
+        {
+          "id": "t1",
+          "text": "ダッシュボードにリンクを追加する",
+          "done": false,
+          "categoryId": "work"
+        },
+        {
+          "id": "t2",
+          "text": "好きなテーマを選ぶ",
+          "done": false,
+          "categoryId": "private"
+        }
+      ],
+      "rows": 2
     },
     {
       "id": "dev",
@@ -51,10 +103,25 @@
       "size": "s",
       "view": "list",
       "items": [
-        { "id": "github", "title": "GitHub", "url": "https://github.com/", "description": "リポジトリと Issue" },
-        { "id": "cloudflare", "title": "Cloudflare", "url": "https://dash.cloudflare.com/", "description": "Workers / Access" },
-        { "id": "claude", "title": "Claude", "url": "https://claude.ai/" }
-      ]
+        {
+          "id": "github",
+          "title": "GitHub",
+          "url": "https://github.com/",
+          "description": "リポジトリと Issue"
+        },
+        {
+          "id": "cloudflare",
+          "title": "Cloudflare",
+          "url": "https://dash.cloudflare.com/",
+          "description": "Workers / Access"
+        },
+        {
+          "id": "claude",
+          "title": "Claude",
+          "url": "https://claude.ai/"
+        }
+      ],
+      "rows": 2
     },
     {
       "id": "reading",
@@ -62,7 +129,16 @@
       "title": "あとで見る",
       "size": "s",
       "view": "list",
-      "items": []
+      "items": [],
+      "rows": 2
+    },
+    {
+      "id": "memo",
+      "type": "note",
+      "title": "メモ",
+      "size": "m",
+      "text": "",
+      "rows": 2
     }
   ]
 }

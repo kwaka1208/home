@@ -70,7 +70,8 @@
           <option value="note">メモ</option>
           <option value="clock">時計</option>
           <option value="search">Web 検索</option>
-          <option value="embed">埋め込み（カレンダーなど）</option>
+          <option value="embed">埋め込み（YouTube・カレンダーなど）</option>
+          <option value="todo">ToDo（カテゴリー別）</option>
         </select>
       </label>
 
@@ -86,6 +87,16 @@
           <option value="m">M（2列）</option>
           <option value="l">L（3列）</option>
           <option value="xl">XL（全幅）</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="field__label">高さ（タイル表示のとき）</span>
+        <select class="input" name="rows">
+          <option value="1">1 段</option>
+          <option value="2">2 段</option>
+          <option value="3">3 段</option>
+          <option value="4">4 段</option>
         </select>
       </label>
 
@@ -111,11 +122,12 @@
       </label>
 
       <label class="field" data-for-type="embed">
-        <span class="field__label">埋め込む URL</span>
-        <input class="input" name="embedUrl" type="url" placeholder="https://calendar.google.com/calendar/embed?src=...">
+        <span class="field__label">埋め込む URL（YouTube の動画・プレイリストの URL はそのまま貼れます）</span>
+        <input class="input" name="embedUrl" type="url" placeholder="https://www.youtube.com/watch?v=...">
+        <span class="field__hint" id="embed-url-hint" hidden>YouTube の動画として埋め込みます。高さは幅に合わせて自動で決まります。</span>
       </label>
-      <label class="field" data-for-type="embed">
-        <span class="field__label">高さ（px）</span>
+      <label class="field" data-for-type="embed" id="embed-height-field">
+        <span class="field__label">高さ（px。設定の「ウィジェットの高さ」が「中身に合わせる」のときに使います）</span>
         <input class="input" name="height" type="number" min="120" max="1600" step="10">
       </label>
 
@@ -164,6 +176,25 @@
     </form>
   </dialog>
 
+  <!-- 1 行の文字入力（ToDo やカテゴリーの名前など） -->
+  <dialog class="dialog" id="text-dialog">
+    <form method="dialog" class="dialog__body" id="text-form">
+      <h2 class="dialog__title" id="text-dialog-title"></h2>
+      <label class="field">
+        <span class="field__label" id="text-dialog-label"></span>
+        <input class="input" name="text" maxlength="200" required>
+      </label>
+      <div class="dialog__actions">
+        <span class="dialog__spacer"></span>
+        <button value="cancel" class="button" formnovalidate>キャンセル</button>
+        <button value="ok" class="button button--primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 一時的なお知らせ -->
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
   <!-- 設定 -->
   <dialog class="dialog dialog--wide" id="settings-dialog">
     <form method="dialog" class="dialog__body" id="settings-form">
@@ -190,6 +221,13 @@
         <select class="input" name="density">
           <option value="normal">標準</option>
           <option value="compact">コンパクト（余白を詰める）</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="field__label">ウィジェットの高さ</span>
+        <select class="input" name="layout">
+          <option value="tile">タイル（各ウィジェットの「高さ（段）」でマス目にそろえる）</option>
+          <option value="flow">中身に合わせる（段の指定を使わない）</option>
         </select>
       </label>
       <label class="checkbox">

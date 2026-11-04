@@ -128,6 +128,7 @@
     --page-gutter: var(--space-5);       /* 画面端の余白 */
     --grid-columns: 4;                   /* 広い画面での列数 */
     --grid-gap: var(--space-4);
+    --grid-row-height: 150px;            /* タイル表示の 1 段の高さ */
     --widget-padding: var(--space-4);
     --link-tile-min: 92px;               /* タイル表示のリンク 1 個の最小幅 */
     --icon-size: 20px;
@@ -152,6 +153,7 @@
 
   /* 表示密度「コンパクト」（設定画面から切り替え） */
   :root[data-density="compact"] {
+    --grid-row-height: 140px;
     --font-size-md: 0.875rem;
     --widget-padding: var(--space-3);
     --grid-gap: var(--space-2);
