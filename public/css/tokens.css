@@ -125,6 +125,7 @@
 
     /* ---------- レイアウト ---------- */
     --page-max-width: 1440px;
+    --footer-height: 40px;               /* 画面下に固定したフッターの高さ */
     --page-gutter: var(--space-5);       /* 画面端の余白 */
     --grid-columns: 4;                   /* 広い画面での列数 */
     --grid-gap: var(--space-4);
