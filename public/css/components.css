@@ -158,6 +158,87 @@
   .signin__title::before { content: var(--widget-title-prefix); }
   .signin__text { color: var(--color-text-muted); font-size: var(--font-size-sm); }
 
+  /* ---------- タブ ---------- */
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-2);
+    max-width: var(--page-max-width);
+    margin: 0 auto var(--space-2);
+    padding: 0 var(--page-gutter);
+  }
+  .tabs[hidden] { display: none; }
+
+  .tabs__list {
+    display: flex;
+    flex: 1 1 auto;
+    gap: var(--space-1);
+    min-width: 0;
+    overflow-x: auto;
+    border-bottom: var(--border-width) solid var(--color-border);
+    scrollbar-width: thin;
+  }
+
+  .tab-item {
+    display: flex;
+    flex: none;
+    align-items: center;
+  }
+
+  .tab {
+    position: relative;
+    padding: var(--space-2) var(--space-4);
+    border: 0;
+    border-radius: var(--button-radius) var(--button-radius) 0 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-family: var(--widget-title-font);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: var(--widget-title-spacing);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color var(--transition-fast), background var(--transition-fast);
+  }
+  .tab:hover { color: var(--color-text); background: var(--link-hover-bg); }
+  .tab[aria-selected="true"] { color: var(--color-text); }
+  .tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    right: var(--space-2);
+    bottom: calc(-1 * var(--border-width));
+    left: var(--space-2);
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+    background: var(--color-accent);
+  }
+
+  .tab-item__handle,
+  .tab-item__tools { display: none; }
+  [data-editing] .tab-item__handle,
+  [data-editing] .tab-item__tools { display: inline-flex; }
+  .tab-item__handle {
+    padding: 0 2px 0 var(--space-1);
+    color: var(--color-text-muted);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .tabs__add {
+    flex: none;
+    min-height: 32px;
+    padding: 0 var(--space-3);
+    border: var(--border-width) dashed var(--color-border);
+    border-radius: var(--button-radius);
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+  }
+  .tabs__add:hover { border-color: var(--color-accent); color: var(--color-accent); }
+
   /* ---------- ウィジェット ---------- */
   .widget {
     --widget-accent: var(--color-accent);

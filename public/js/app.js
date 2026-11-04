@@ -6,8 +6,10 @@
  *
  * データ形式（default-dashboard.json も同じ形）:
  * {
- *   "version": 1,
+ *   "version": 2,
  *   "title": "Dashboard",
+ *   "pages": [ { "id": "...", "name": "ホーム", "widgets": [ ...下の widgets と同じ... ] } ],
+ *   （version 1 の形式：pages の代わりに widgets だけを持つ。読み込むと「ホーム」タブ 1 つになる）
  *   "settings": { "mode": "auto", "preset": "", "density": "normal", "layout": "tile",
  *                 "openInNewTab": true, "useFavicons": true },
  *   "widgets": [
@@ -63,6 +65,7 @@ const el = {
   root: document.documentElement,
   title: $("#dashboard-title"),
   dashboard: $("#dashboard"),
+  tabs: $("#tabs"),
   filter: $("#filter"),
   editToggle: $("#edit-toggle"),
   settingsOpen: $("#settings-open"),
@@ -152,10 +155,10 @@ function isHexColor(value) {
 /** 読み込んだデータを補正する（古い形式や手で書いた JSON への備え） */
 function normalize(data) {
   const out = {
-    version: 1,
+    version: 2,
     title: typeof data?.title === "string" ? data.title : "Dashboard",
     settings: { ...DEFAULT_SETTINGS, ...(data?.settings || {}) },
-    widgets: [],
+    pages: [],
   };
   // 旧バージョンの「コンパクト」テーマは表示密度の設定に移した
   if (out.settings.preset === "compact") {
@@ -165,39 +168,194 @@ function normalize(data) {
   if (!THEME_PRESETS.some((p) => p.id === out.settings.preset)) out.settings.preset = "";
   if (out.settings.layout !== "flow") out.settings.layout = "tile";
   delete out.settings.alignRows; // 旧バージョンの設定（layout に置き換え）
-  for (const w of Array.isArray(data?.widgets) ? data.widgets : []) {
-    if (!w || !WIDGET_TYPES[w.type]) continue;
-    const widget = {
-      ...w,
-      id: w.id ? String(w.id) : uid(),
-      title: typeof w.title === "string" ? w.title : "",
-      size: SIZES.includes(w.size) ? w.size : "m",
-      rows: normalizeRows(w.rows, w.type),
-    };
-    if (widget.type === "links") {
-      widget.view = widget.view === "grid" ? "grid" : "list";
-      widget.items = (Array.isArray(w.items) ? w.items : [])
-        .filter((item) => item && safeUrl(item.url))
-        .map((item) => ({ ...item, id: item.id ? String(item.id) : uid() }));
-    }
-    if (widget.type === "todo") {
-      widget.categories = (Array.isArray(w.categories) ? w.categories : [])
-        .filter((c) => c && typeof c.name === "string")
-        .map((c) => ({ id: c.id ? String(c.id) : uid(), name: c.name }));
-      const categoryIds = new Set(widget.categories.map((c) => c.id));
-      widget.items = (Array.isArray(w.items) ? w.items : [])
-        .filter((item) => item && typeof item.text === "string" && categoryIds.has(String(item.categoryId)))
-        .map((item) => ({
-          id: item.id ? String(item.id) : uid(),
-          text: item.text,
-          done: Boolean(item.done),
-          categoryId: String(item.categoryId),
-        }));
-    }
-    out.widgets.push(widget);
+
+  // タブ。旧形式（widgets だけ）は「ホーム」タブ 1 つにまとめる
+  const pages = Array.isArray(data?.pages) && data.pages.length
+    ? data.pages
+    : [{ id: "home", name: "ホーム", widgets: data?.widgets }];
+  for (const p of pages) {
+    if (!p || typeof p !== "object") continue;
+    out.pages.push({
+      id: p.id ? String(p.id) : uid(),
+      name: typeof p.name === "string" && p.name.trim() ? p.name : "タブ",
+      widgets: (Array.isArray(p.widgets) ? p.widgets : []).map(normalizeWidget).filter(Boolean),
+    });
   }
+  if (out.pages.length === 0) out.pages.push({ id: uid(), name: "ホーム", widgets: [] });
   return out;
 }
+
+/** ウィジェット 1 つ分の補正 */
+function normalizeWidget(w) {
+  if (!w || !WIDGET_TYPES[w.type]) return null;
+  const widget = {
+    ...w,
+    id: w.id ? String(w.id) : uid(),
+    title: typeof w.title === "string" ? w.title : "",
+    size: SIZES.includes(w.size) ? w.size : "m",
+    rows: normalizeRows(w.rows, w.type),
+  };
+  if (widget.type === "links") {
+    widget.view = widget.view === "grid" ? "grid" : "list";
+    widget.items = (Array.isArray(w.items) ? w.items : [])
+      .filter((item) => item && safeUrl(item.url))
+      .map((item) => ({ ...item, id: item.id ? String(item.id) : uid() }));
+  }
+  if (widget.type === "todo") {
+    widget.categories = (Array.isArray(w.categories) ? w.categories : [])
+      .filter((c) => c && typeof c.name === "string")
+      .map((c) => ({ id: c.id ? String(c.id) : uid(), name: c.name }));
+    const categoryIds = new Set(widget.categories.map((c) => c.id));
+    widget.items = (Array.isArray(w.items) ? w.items : [])
+      .filter((item) => item && typeof item.text === "string" && categoryIds.has(String(item.categoryId)))
+      .map((item) => ({
+        id: item.id ? String(item.id) : uid(),
+        text: item.text,
+        done: Boolean(item.done),
+        categoryId: String(item.categoryId),
+      }));
+  }
+  return widget;
+}
+
+/* ================================================================== */
+/* タブ                                                                 */
+/* ================================================================== */
+
+const ACTIVE_TAB_KEY = "personal-dashboard:active-tab";
+let activePageId = null;
+
+/** いま表示しているタブ */
+function page() {
+  return state.pages.find((p) => p.id === activePageId) || state.pages[0];
+}
+
+/** いま表示しているタブのウィジェット */
+function widgets() {
+  return page().widgets;
+}
+
+/** 開くタブを決める：URL の #タブID → この端末で最後に開いたタブ → 先頭 */
+function pickInitialPage() {
+  const fromHash = decodeURIComponent(location.hash.slice(1));
+  let remembered = null;
+  try { remembered = localStorage.getItem(ACTIVE_TAB_KEY); } catch { /* 使えない環境 */ }
+  const found = [fromHash, remembered].find((id) => id && state.pages.some((p) => p.id === id));
+  activePageId = found || state.pages[0].id;
+}
+
+function switchPage(id, { updateHash = true } = {}) {
+  if (!state.pages.some((p) => p.id === id)) return;
+  activePageId = id;
+  try { localStorage.setItem(ACTIVE_TAB_KEY, id); } catch { /* 使えない環境 */ }
+  if (updateHash) history.replaceState(null, "", `#${encodeURIComponent(id)}`);
+  el.filter.value = "";
+  render();
+}
+
+window.addEventListener("hashchange", () => {
+  if (!state) return;
+  const id = decodeURIComponent(location.hash.slice(1));
+  if (id && id !== activePageId) switchPage(id, { updateHash: false });
+});
+
+function renderTabs() {
+  const show = state.pages.length > 1 || editing;
+  el.tabs.hidden = !show;
+  if (!show) {
+    el.tabs.replaceChildren();
+    return;
+  }
+  const list = h("div", { class: "tabs__list", role: "tablist", "aria-label": "タブ" });
+  for (const p of state.pages) {
+    const selected = p.id === page().id;
+    const item = h("div", { class: "tab-item", dataset: { pageId: p.id } },
+      h("span", { class: "tab-item__handle", title: "ドラッグでタブを並べ替え", "aria-hidden": "true" }, "⠿"),
+      h("button", {
+        type: "button",
+        class: "tab",
+        role: "tab",
+        "aria-selected": String(selected),
+        tabindex: selected ? "0" : "-1",
+        onclick: () => switchPage(p.id),
+        onkeydown: (event) => moveTabFocus(event, p.id),
+      }, p.name),
+      h("span", { class: "tab-item__tools" },
+        h("button", {
+          type: "button",
+          class: "button button--small button--ghost",
+          title: "名前を変える",
+          "aria-label": `タブ「${p.name}」の名前を変える`,
+          onclick: () => renamePage(p),
+        }, "✎"),
+        state.pages.length > 1 ? h("button", {
+          type: "button",
+          class: "button button--small button--ghost button--danger",
+          title: "タブを削除",
+          "aria-label": `タブ「${p.name}」を削除`,
+          onclick: () => deletePage(p),
+        }, "×") : null,
+      ),
+    );
+    list.append(item);
+  }
+  el.tabs.replaceChildren(list);
+  if (editing) {
+    el.tabs.append(h("button", { type: "button", class: "tabs__add", onclick: addPage }, "＋ タブを追加"));
+  }
+}
+
+/** 矢印キーでタブを移動（WAI-ARIA のタブの操作） */
+function moveTabFocus(event, id) {
+  const index = state.pages.findIndex((p) => p.id === id);
+  let next = null;
+  if (event.key === "ArrowRight") next = state.pages[(index + 1) % state.pages.length];
+  if (event.key === "ArrowLeft") next = state.pages[(index - 1 + state.pages.length) % state.pages.length];
+  if (event.key === "Home") next = state.pages[0];
+  if (event.key === "End") next = state.pages[state.pages.length - 1];
+  if (!next) return;
+  event.preventDefault();
+  switchPage(next.id);
+  $(`.tab-item[data-page-id="${CSS.escape(next.id)}"] .tab`, el.tabs)?.focus();
+}
+
+async function addPage() {
+  const name = await askText({ title: "タブを追加", label: "タブの名前", value: "" });
+  if (!name) return;
+  const p = { id: uid(), name, widgets: [] };
+  state.pages.push(p);
+  scheduleSave();
+  switchPage(p.id);
+}
+
+async function renamePage(p) {
+  const name = await askText({ title: "タブの名前を変える", label: "タブの名前", value: p.name });
+  if (!name) return;
+  p.name = name;
+  commit();
+}
+
+function deletePage(p) {
+  if (state.pages.length <= 1) return;
+  const count = p.widgets.length;
+  const extra = count ? `\n（このタブのウィジェット ${count} 個も消えます）` : "";
+  if (!confirm(`タブ「${p.name}」を削除しますか？${extra}`)) return;
+  state.pages = state.pages.filter((x) => x.id !== p.id);
+  if (activePageId === p.id) {
+    activePageId = state.pages[0].id;
+    history.replaceState(null, "", `#${encodeURIComponent(activePageId)}`);
+  }
+  commit();
+}
+
+// Alt（Mac は option）＋数字キーでタブを切り替え
+document.addEventListener("keydown", (event) => {
+  if (!state || !event.altKey || event.ctrlKey || event.metaKey) return;
+  const n = Number((event.code || "").replace("Digit", ""));
+  if (!n || n > state.pages.length || document.querySelector("dialog[open]")) return;
+  event.preventDefault();
+  switchPage(state.pages[n - 1].id);
+});
 
 /* ================================================================== */
 /* 保存                                                                 */
@@ -271,13 +429,14 @@ function render() {
   applySettings();
   destroySortables();
 
-  const nodes = state.widgets.map(renderWidget);
+  renderTabs();
+  const nodes = widgets().map(renderWidget);
   if (editing) {
     nodes.push(
       h("button", { type: "button", class: "widget-add", onclick: () => openWidgetDialog(null) }, "＋ ウィジェットを追加"),
     );
   }
-  if (state.widgets.length === 0 && !editing) {
+  if (widgets().length === 0 && !editing) {
     nodes.push(
       h("p", { class: "widget__empty" }, "ウィジェットがありません。右上の「編集」から追加できます。"),
     );
@@ -805,7 +964,7 @@ document.addEventListener("drop", (event) => {
   event.preventDefault();
   setDropTarget(null);
   const target = event.target.closest?.(".widget--links, .widget--embed");
-  const widget = target && state.widgets.find((w) => w.id === target.dataset.id);
+  const widget = target && widgets().find((w) => w.id === target.dataset.id);
   if (!widget) return;
 
   const link = readDroppedLink(event.dataTransfer);
@@ -859,6 +1018,22 @@ function setupSortables() {
     delay: 150, // スマホではスクロールと区別するため少し長押し
   };
 
+  // タブの並べ替え
+  const tabList = $(".tabs__list", el.tabs);
+  if (tabList) {
+    sortables.push(new Sortable(tabList, {
+      ...common,
+      direction: "horizontal",
+      draggable: ".tab-item",
+      handle: ".tab-item__handle",
+      onEnd: () => {
+        const order = $$(".tab-item", tabList).map((n) => n.dataset.pageId);
+        state.pages.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+        commit();
+      },
+    }));
+  }
+
   // ウィジェットの並べ替え
   sortables.push(new Sortable(el.dashboard, {
     ...common,
@@ -866,7 +1041,7 @@ function setupSortables() {
     draggable: ".widget",
     onEnd: () => {
       const order = $$(".widget", el.dashboard).map((n) => n.dataset.id);
-      state.widgets.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      widgets().sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
       commit();
     },
   }));
@@ -882,11 +1057,11 @@ function setupSortables() {
       onEnd: (event) => {
         if (event.from === event.to && event.oldIndex === event.newIndex) return;
         const all = new Map();
-        for (const w of state.widgets) {
+        for (const w of widgets()) {
           if (w.type === "links") for (const item of w.items) all.set(item.id, item);
         }
         for (const listEl of new Set([event.from, event.to])) {
-          const widget = state.widgets.find((w) => w.id === listEl.dataset.widgetId);
+          const widget = widgets().find((w) => w.id === listEl.dataset.widgetId);
           if (!widget) continue;
           widget.items = $$(".link-item", listEl).map((n) => all.get(n.dataset.id)).filter(Boolean);
         }
@@ -897,7 +1072,7 @@ function setupSortables() {
 
   // ToDo：カテゴリーの並べ替え
   for (const groups of $$(".todo__groups", el.dashboard)) {
-    const widget = state.widgets.find((w) => w.id === groups.dataset.widgetId);
+    const widget = widgets().find((w) => w.id === groups.dataset.widgetId);
     if (!widget) continue;
     sortables.push(new Sortable(groups, {
       ...common,
@@ -1001,7 +1176,7 @@ el.widgetForm.elements.embedUrl.addEventListener("input", updateWidgetFormVisibi
 
 function openWidgetDialog(widgetId) {
   editingWidgetId = widgetId;
-  const widget = state.widgets.find((w) => w.id === widgetId);
+  const widget = widgets().find((w) => w.id === widgetId);
   const f = el.widgetForm.elements;
 
   $("#widget-dialog-title").textContent = widget ? "ウィジェットを編集" : "ウィジェットを追加";
@@ -1010,6 +1185,9 @@ function openWidgetDialog(widgetId) {
   f.title.value = widget?.title ?? "";
   f.size.value = widget?.size || "m";
   f.rows.value = String(widget?.rows || DEFAULT_ROWS[f.type.value] || 2);
+  f.page.replaceChildren(...state.pages.map((p) => h("option", { value: p.id }, p.name)));
+  f.page.value = page().id;
+  $("#widget-page-field").hidden = state.pages.length <= 1;
   f.useAccent.checked = isHexColor(widget?.accent);
   f.accent.value = isHexColor(widget?.accent) ? widget.accent : "#2f6f5e";
   f.view.value = widget?.view || "list";
@@ -1037,7 +1215,7 @@ el.widgetForm.elements.type.addEventListener("change", () => {
 el.widgetDialog.addEventListener("close", () => {
   if (el.widgetDialog.returnValue !== "ok") return;
   const f = el.widgetForm.elements;
-  let widget = state.widgets.find((w) => w.id === editingWidgetId);
+  let widget = widgets().find((w) => w.id === editingWidgetId);
   if (!widget) {
     widget = { id: uid(), type: f.type.value };
     if (widget.type === "links") widget.items = [];
@@ -1046,7 +1224,7 @@ el.widgetDialog.addEventListener("close", () => {
       widget.categories = DEFAULT_TODO_CATEGORIES.map((name) => ({ id: uid(), name }));
       widget.items = [];
     }
-    state.widgets.push(widget);
+    widgets().push(widget);
   }
   widget.title = f.title.value.trim();
   widget.size = SIZES.includes(f.size.value) ? f.size.value : "m";
@@ -1061,16 +1239,29 @@ el.widgetDialog.addEventListener("close", () => {
     widget.height = Number(f.height.value) || 400;
   }
   if (widget.type === "clock") widget.timeZone = f.timeZone.value.trim();
+
+  // 別のタブへ移す
+  const target = state.pages.find((p) => p.id === f.page.value);
+  if (target && target.id !== page().id) {
+    page().widgets = widgets().filter((w) => w.id !== widget.id);
+    target.widgets.push(widget);
+    commit();
+    showToast(`「${widget.title || WIDGET_TYPES[widget.type]}」をタブ「${target.name}」に移しました`, {
+      label: "そのタブを開く",
+      run: () => switchPage(target.id),
+    });
+    return;
+  }
   commit();
 });
 
 el.widgetDelete.addEventListener("click", () => {
-  const widget = state.widgets.find((w) => w.id === editingWidgetId);
+  const widget = widgets().find((w) => w.id === editingWidgetId);
   if (!widget) return;
   const extra = widget.type === "links" && widget.items.length ? `（リンク ${widget.items.length} 件も消えます）`
     : widget.type === "todo" && widget.items.length ? `（ToDo ${widget.items.length} 件も消えます）` : "";
   if (!confirm(`「${widget.title || WIDGET_TYPES[widget.type]}」を削除しますか？${extra}`)) return;
-  state.widgets = state.widgets.filter((w) => w.id !== editingWidgetId);
+  page().widgets = widgets().filter((w) => w.id !== editingWidgetId);
   el.widgetDialog.close("deleted");
   commit();
 });
@@ -1083,7 +1274,7 @@ let linkTarget = { widgetId: null, itemId: null };
 
 function openLinkDialog(widgetId, itemId) {
   linkTarget = { widgetId, itemId };
-  const widget = state.widgets.find((w) => w.id === widgetId);
+  const widget = widgets().find((w) => w.id === widgetId);
   const item = widget?.items.find((i) => i.id === itemId);
   const f = el.linkForm.elements;
 
@@ -1108,7 +1299,7 @@ el.linkForm.elements.url.addEventListener("input", () => el.linkForm.elements.ur
 
 el.linkDialog.addEventListener("close", () => {
   if (el.linkDialog.returnValue !== "ok") return;
-  const widget = state.widgets.find((w) => w.id === linkTarget.widgetId);
+  const widget = widgets().find((w) => w.id === linkTarget.widgetId);
   if (!widget) return;
   const f = el.linkForm.elements;
   const url = safeUrl(f.url.value);
@@ -1127,7 +1318,7 @@ el.linkDialog.addEventListener("close", () => {
 });
 
 el.linkDelete.addEventListener("click", () => {
-  const widget = state.widgets.find((w) => w.id === linkTarget.widgetId);
+  const widget = widgets().find((w) => w.id === linkTarget.widgetId);
   if (!widget) return;
   widget.items = widget.items.filter((i) => i.id !== linkTarget.itemId);
   el.linkDialog.close("deleted");
@@ -1229,6 +1420,7 @@ el.importInput.addEventListener("change", async () => {
     if (!Array.isArray(data.widgets)) throw new Error("widgets がありません");
     if (!confirm("今のダッシュボードを、読み込んだ内容で置き換えますか？")) return;
     state = normalize(data);
+    pickInitialPage();
     el.settingsDialog.close("imported");
     commit();
   } catch (err) {
@@ -1240,6 +1432,7 @@ el.resetButton.addEventListener("click", async () => {
   if (!confirm("すべてのウィジェットとリンクを消して、初期状態に戻しますか？\n（先に「書き出す」でバックアップを取ることをおすすめします）")) return;
   try {
     state = normalize(await storage.loadDefault());
+    pickInitialPage();
     el.settingsDialog.close("reset");
     commit();
   } catch (err) {
@@ -1259,6 +1452,8 @@ function showSignedOut() {
   if (editing) setEditing(false);
   state = null;
   el.dashboard.replaceChildren();
+  el.tabs.replaceChildren();
+  el.tabs.hidden = true;
   el.headerSearch.hidden = true;
   el.headerActions.hidden = true;
   el.userEmail.textContent = "";
@@ -1273,6 +1468,7 @@ async function openDashboard(user) {
   try {
     const result = await storage.load();
     state = normalize(result.data);
+    pickInitialPage();
     storageMode = result.mode;
   } catch (err) {
     // 許可がない・設定漏れなど。データを上書きしないよう、画面は出さない

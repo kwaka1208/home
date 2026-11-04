@@ -40,6 +40,9 @@
 
   <div class="banner" id="banner" hidden></div>
 
+  <!-- タブ（タブが 2 つ以上あるとき、または編集中に表示） -->
+  <nav class="tabs" id="tabs" hidden></nav>
+
   <!-- ログイン画面（Firebase の設定が済んでいて、ログインしていないとき） -->
   <section class="signin" id="signin" hidden>
     <div class="signin__card">
@@ -88,6 +91,11 @@
           <option value="l">L（3列）</option>
           <option value="xl">XL（全幅）</option>
         </select>
+      </label>
+
+      <label class="field" id="widget-page-field">
+        <span class="field__label">タブ（別のタブに移すときに変更）</span>
+        <select class="input" name="page"></select>
       </label>
 
       <label class="field">
