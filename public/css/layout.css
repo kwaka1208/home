@@ -148,7 +148,8 @@
     color: inherit;
     text-decoration: none;
   }
-  .app-footer__link:hover { color: var(--color-text); text-decoration: underline; }
+  .app-footer__link:hover { color: var(--color-text); }
+  .app-footer__version { font-variant-numeric: tabular-nums; }
   #user-email {
     min-width: 0;
     overflow: hidden;
