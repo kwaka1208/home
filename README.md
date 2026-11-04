@@ -34,9 +34,10 @@ Google アカウントでログインした本人だけが、中身を見たり�
 
 ---
 
-## 自作ウィジェットを作る
+## アドオン（自作ウィジェット）
 
-ウィジェットの仕組みと、自分でウィジェットを追加する手順（例：カウントダウン）は **[WIDGET.md](WIDGET.md)** にまとめています。
+自分で作ったウィジェットを **アドオン** として追加できます。`public/addons/` にファイルを置いて `public/addons/index.js` で読み込むだけで、本体のファイルは書き換えません。
+作り方と見本（カウントダウン）は **[WIDGET.md](WIDGET.md)** にまとめています。
 
 ---
 
@@ -280,7 +281,7 @@ GitHub に push すると自動で公開し直されます。Firestore のデー
 本家で `firestore.rules` が変わったときは、Firebase コンソールのルールにも反映してください
 （自分のメールアドレスの部分は残します）。
 
-カスタマイズを `custom.css` と `themes.css` への追記に留めておくと、衝突しにくくなります。
+カスタマイズを `custom.css` と `themes.css` への追記、自作ウィジェットを `public/addons/`（アドオン）に留めておくと、衝突しにくくなります。
 
 ---
 
@@ -333,13 +334,16 @@ public/                      GitHub Pages で公開されるファイル
   js/services.js             天気（Open-Meteo）・GitHub の API の呼び出し
   js/firebase-config.js      あなたの Firebase の設定値
   js/config.js               テーマ一覧などの設定
+  js/addon-api.js            アドオンを登録するための registerWidget()
+  addons/index.js            使うアドオンの一覧（本家では空。WIDGET.md 参照）
+  addons/countdown.js        アドオンの見本（カウントダウン）
   vendor/Sortable.min.js     並べ替えライブラリ SortableJS（MIT）
   vendor/marked.umd.js       Markdown の変換ライブラリ marked（MIT）
   vendor/purify.min.js       危険な HTML を取り除くライブラリ DOMPurify（Apache-2.0 / MPL-2.0）
 README.md                    セットアップ（このファイル）
 USAGE.md                     使い方（操作方法・ウィジェットごとの説明）
 DESIGN.md                    見た目のカスタマイズ（CSS 変数・クラス名・テーマの作り方）
-WIDGET.md                    ウィジェットの仕組みと、自作ウィジェットの作り方
+WIDGET.md                    アドオン（自作ウィジェット）の作り方
 firestore.rules              Firestore のセキュリティルール（コンソールに貼り付ける見本）
 firebase.json                エミュレーター用の設定
 .github/workflows/pages.yml  public/ を GitHub Pages に公開する設定

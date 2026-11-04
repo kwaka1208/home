@@ -31,6 +31,7 @@ import * as storage from "./storage.js";
 import { toYouTubeEmbed, toImageUrl } from "./embed.js";
 import { CALENDAR_SCOPE, GMAIL_SCOPE, fetchCalendarEvents, fetchGmailUnread } from "./google.js";
 import { GITHUB_LISTS, describeWeather, fetchGitHub, fetchWeather, geocode } from "./services.js";
+import { addons } from "./addon-api.js";
 
 const WIDGET_TYPES = {
   links: "リンク集",
@@ -247,7 +248,8 @@ function normalize(data) {
 
 /** ウィジェット 1 つ分の補正 */
 function normalizeWidget(w) {
-  if (!w || !WIDGET_TYPES[w.type]) return null;
+  if (!w || typeof w !== "object" || typeof w.type !== "string" || !w.type) return null;
+  // 知らない種類（アドオンを外した・まだ読み込めていないなど）は、データを消さずにそのまま残す
   const widget = {
     ...w,
     id: w.id ? String(w.id) : uid(),
@@ -570,7 +572,7 @@ function renderWidget(widget) {
     class: `widget widget--${widget.type}`,
     dataset: { id: widget.id, size: widget.size, rows: String(widget.rows), type: widget.type },
     "data-accent": isHexColor(widget.accent) ? "" : null,
-    "aria-label": widget.title || WIDGET_TYPES[widget.type],
+    "aria-label": widget.title || typeName(widget.type),
   });
   // カスタムプロパティは Object.assign では入らないので setProperty で
   for (const [k, v] of Object.entries(style)) section.style.setProperty(k, v);
@@ -747,7 +749,7 @@ function renderWidgetBody(widget) {
     case "worldclock": return renderWorldClock(widget);
     case "habit": return renderHabit(widget);
     case "github": return renderGitHub(widget);
-    default: return null;
+    default: return renderAddonWidget(widget);
   }
 }
 
@@ -2740,6 +2742,10 @@ function openWidgetDialog(widgetId) {
   const f = el.widgetForm.elements;
 
   $("#widget-dialog-title").textContent = widget ? "ウィジェットを編集" : "ウィジェットを追加";
+  // アドオンを外したなどで、知らない種類のウィジェットも編集（大きさ・削除など）できるように
+  if (widget && ![...f.type.options].some((o) => o.value === widget.type)) {
+    f.type.append(h("option", { value: widget.type }, `${widget.type}（アドオンが見つかりません）`));
+  }
   f.type.value = widget?.type || "links";
   f.type.disabled = Boolean(widget); // 種類は作成時のみ選べる
   f.title.value = widget?.title ?? "";
@@ -2891,7 +2897,7 @@ el.widgetDialog.addEventListener("close", () => {
     page().widgets = widgets().filter((w) => w.id !== widget.id);
     target.widgets.push(widget);
     commit();
-    showToast(`「${widget.title || WIDGET_TYPES[widget.type]}」をタブ「${target.name}」に移しました`, {
+    showToast(`「${widget.title || typeName(widget.type)}」をタブ「${target.name}」に移しました`, {
       label: "そのタブを開く",
       run: () => switchPage(target.id),
     });
@@ -2906,7 +2912,7 @@ el.widgetDelete.addEventListener("click", () => {
   const extra = widget.type === "links" && widget.items.length ? `（リンク ${widget.items.length} 件も消えます）`
     : widget.type === "todo" && widget.items.length ? `（ToDo ${widget.items.length} 件も消えます）`
     : widget.type === "photo" && widget.photos.length ? `（登録した写真 ${widget.photos.length} 枚の URL も消えます）` : "";
-  if (!confirm(`「${widget.title || WIDGET_TYPES[widget.type]}」を削除しますか？${extra}`)) return;
+  if (!confirm(`「${widget.title || typeName(widget.type)}」を削除しますか？${extra}`)) return;
   page().widgets = widgets().filter((w) => w.id !== editingWidgetId);
   el.widgetDialog.close("deleted");
   commit();
@@ -3166,6 +3172,7 @@ async function openDashboard(user) {
   } else {
     showBanner("");
   }
+  if (addonLoadError) showBanner(addonLoadError);
   setStatus("");
   render();
   clearInterval(clockTimer);
@@ -3190,6 +3197,7 @@ el.signoutButton.addEventListener("click", async () => {
 });
 
 async function init() {
+  await loadAddons();
   // ログイン前も、前回選んだテーマで表示する
   const appearance = storage.readAppearance();
   applySettings({ ...DEFAULT_SETTINGS, ...(appearance || {}) });
@@ -3218,3 +3226,218 @@ async function init() {
 }
 
 init();
+
+/* ================================================================== */
+/* アドオン（自作ウィジェット）                                           */
+/* ================================================================== */
+/*
+ * public/addons/index.js で読み込んだアドオンが addon-api.js の registerWidget() で登録した種類を、
+ * 組み込みのウィジェットと同じように使えるようにする。書き方は WIDGET.md を参照。
+ */
+
+let addonLoadError = "";
+
+/** 種類の表示名（知らない種類なら type をそのまま） */
+function typeName(type) {
+  return WIDGET_TYPES[type] || type;
+}
+
+async function loadAddons() {
+  try {
+    await import("../addons/index.js");
+  } catch (err) {
+    console.error(err);
+    addonLoadError = `アドオンを読み込めませんでした（${err?.message || err}）。public/addons/ のファイルを確認してください。`;
+  }
+  for (const def of addons.values()) {
+    try {
+      installAddon(def);
+    } catch (err) {
+      console.error(err);
+      addonLoadError = `アドオン「${def.type}」を組み込めませんでした（${err?.message || err}）`;
+    }
+  }
+}
+
+function installAddon(def) {
+  const { type } = def;
+  if (WIDGET_TYPES[type]) throw new Error(`種類「${type}」は組み込みのウィジェットと同じ名前です`);
+  WIDGET_TYPES[type] = def.name;
+  if (ROW_OPTIONS.includes(def.defaultRows)) DEFAULT_ROWS[type] = def.defaultRows;
+  if (def.minSize) {
+    MIN_SIZE[type] = {
+      ...(SIZES.includes(def.minSize.size) ? { size: def.minSize.size } : {}),
+      ...(ROW_OPTIONS.includes(def.minSize.rows) ? { rows: def.minSize.rows } : {}),
+    };
+  }
+  if (ROW_OPTIONS.includes(def.fixedRows)) FIXED_ROWS[type] = def.fixedRows;
+
+  // 編集画面：「種類」の選択肢と設定欄
+  el.widgetForm.elements.type.append(h("option", { value: type }, def.name));
+  $("#addon-fields").append(...def.fields.map((field) => renderAddonField(type, field)));
+
+  // 設定欄の値の読み書き（組み込みのウィジェットと同じ WIDGET_FORMS の形）
+  const control = (f, field) => f.namedItem(addonFieldName(type, field.name));
+  WIDGET_FORMS[type] = {
+    init: (w) => {
+      for (const field of def.fields) w[field.name] = addonFieldValue(field, field.default);
+      def.init?.(w);
+    },
+    normalize: (w) => {
+      for (const field of def.fields) w[field.name] = addonFieldValue(field, w[field.name]);
+      def.normalize?.(w);
+    },
+    fill: (f, w) => {
+      for (const field of def.fields) {
+        const input = control(f, field);
+        const value = w ? w[field.name] : addonFieldValue(field, field.default);
+        if (field.type === "checkbox") input.checked = Boolean(value);
+        else input.value = value ?? "";
+      }
+    },
+    save: (f, w) => {
+      for (const field of def.fields) {
+        const input = control(f, field);
+        w[field.name] = addonFieldValue(field, field.type === "checkbox" ? input.checked : input.value);
+      }
+      def.normalize?.(w);
+    },
+  };
+
+  if (typeof def.css === "string" && def.css.trim()) {
+    // テーマ（themes レイヤー）や custom.css で上書きできるよう、components レイヤーに入れる
+    document.head.append(h("style", { dataset: { addon: type } }, `@layer components {\n${def.css}\n}`));
+  }
+}
+
+function addonFieldName(type, name) {
+  return `addon-${type}-${name}`;
+}
+
+/** 設定欄の値を、欄の種類に合わせてそろえる */
+function addonFieldValue(field, value) {
+  switch (field.type) {
+    case "checkbox":
+      return value === undefined ? Boolean(field.default) : Boolean(value);
+    case "number": {
+      if (value === "" || value == null) return typeof field.default === "number" ? field.default : null;
+      let n = Number(value);
+      if (!Number.isFinite(n)) return typeof field.default === "number" ? field.default : null;
+      if (typeof field.min === "number") n = Math.max(field.min, n);
+      if (typeof field.max === "number") n = Math.min(field.max, n);
+      return n;
+    }
+    case "select": {
+      const values = (field.options || []).map((o) => String(typeof o === "object" ? o.value : o));
+      const v = value == null ? "" : String(value);
+      if (values.includes(v)) return v;
+      return field.default != null && values.includes(String(field.default)) ? String(field.default) : values[0] ?? "";
+    }
+    default: {
+      const v = typeof value === "string" ? value : value == null ? "" : String(value);
+      return field.type === "textarea" ? v : v.trim();
+    }
+  }
+}
+
+/** 編集画面の設定欄 1 つ */
+function renderAddonField(type, field) {
+  const name = addonFieldName(type, field.name);
+  const label = field.label || field.name;
+  if (field.type === "checkbox") {
+    return h("label", { class: "checkbox", dataset: { forType: type } },
+      h("input", { type: "checkbox", name }), label);
+  }
+  let input;
+  if (field.type === "textarea") {
+    input = h("textarea", { class: "input", name, rows: field.rows || 4, placeholder: field.placeholder || null });
+  } else if (field.type === "select") {
+    input = h("select", { class: "input", name },
+      ...(field.options || []).map((o) => (typeof o === "object"
+        ? h("option", { value: String(o.value) }, o.label ?? String(o.value))
+        : h("option", { value: String(o) }, String(o)))));
+  } else {
+    input = h("input", {
+      class: `input${field.type === "color" ? " input--color" : ""}`,
+      type: field.type || "text",
+      name,
+      placeholder: field.placeholder || null,
+      min: field.min ?? null,
+      max: field.max ?? null,
+      step: field.step ?? null,
+    });
+  }
+  return h("label", { class: "field", dataset: { forType: type } },
+    h("span", { class: "field__label" }, label),
+    input,
+    field.hint ? h("span", { class: "field__hint" }, field.hint) : null,
+  );
+}
+
+/** アドオンのウィジェットの中身。描く関数でエラーが起きても、ほかのウィジェットは表示し続ける */
+function renderAddonWidget(widget) {
+  const def = addons.get(widget.type);
+  if (!def || WIDGET_TYPES[widget.type] !== def.name) {
+    return h("p", { class: "widget__empty" },
+      `アドオン「${widget.type}」が見つかりません。public/addons/index.js で読み込んでいるか確認してください（データは残っています）。`);
+  }
+  let root = null;
+  const api = addonApi(widget, () => root);
+  try {
+    root = def.render(widget, api) ?? null;
+    if (root != null && !(root instanceof Node)) root = document.createTextNode(String(root));
+  } catch (err) {
+    console.error(err);
+    root = h("p", { class: "widget__empty" }, `アドオン「${widget.type}」でエラーが起きました：${err?.message || err}`);
+  }
+  return root;
+}
+
+/** アドオンの render に渡す道具 */
+function addonApi(widget, getRoot) {
+  return {
+    h, $, $$, uid, safeUrl,
+    /** 設定（テーマ・リンクを新しいタブで開くか など）。読み取り専用として使う */
+    settings: state.settings,
+    /** 編集モード中か */
+    editing,
+    /** widget の値を変えたあとに呼ぶ：描き直して保存する */
+    save: () => commit(),
+    /** 描き直さずに保存だけする（入力中の欄を描き直したくないとき） */
+    saveQuietly: () => commit({ rerender: false }),
+    /** このウィジェットの中身だけを描き直す（保存はしない） */
+    refresh: () => refreshWidgetBody(widget),
+    /** 画面の下に短いお知らせを出す */
+    toast: (message) => showToast(String(message)),
+    /** 設定に合わせて URL を開く（新しいタブ / 同じタブ）。危ない URL は開かない */
+    openUrl: (url) => {
+      const safe = safeUrl(url);
+      if (safe) window.open(safe, state.settings.openInNewTab ? "_blank" : "_self", "noopener");
+    },
+    /** ms ミリ秒ごとに fn を呼ぶ。ウィジェットが描き直されたり消えたりすると自動で止まる */
+    every: (ms, fn) => {
+      const id = setInterval(() => {
+        const root = getRoot();
+        if (root && !root.isConnected) {
+          clearInterval(id);
+          return;
+        }
+        try { fn(); } catch (err) { console.error(err); clearInterval(id); }
+      }, Math.max(250, Number(ms) || 1000));
+      widgetTimers.push(id);
+    },
+    /**
+     * 外から読み込んで表示する（読み込み中・エラー・↻ ボタン・一定時間ごとの読み込み直しつき）。
+     * load：Promise を返す関数 / view(data)：表示する要素を返す関数 / cacheKey：変わったら読み込み直す値
+     */
+    remote: ({ load, view, cacheKey = "", refreshMs = 10 * 60 * 1000 }) => {
+      if (!REMOTE_WIDGETS.includes(widget.type)) REMOTE_WIDGETS.push(widget.type);
+      return renderRemote(widget, {
+        cacheKey: String(cacheKey),
+        load,
+        view: (data) => view(data),
+        refreshMs: Math.max(60 * 1000, Number(refreshMs) || 0),
+      });
+    },
+  };
+}

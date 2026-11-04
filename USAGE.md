@@ -1,7 +1,7 @@
 # 使い方
 
 personal-dashboard の操作方法と、ウィジェットごとの使い方です。
-セットアップは [README.md](README.md)、見た目の変え方は [DESIGN.md](DESIGN.md)、自作ウィジェットの作り方は [WIDGET.md](WIDGET.md) を見てください。
+セットアップは [README.md](README.md)、見た目の変え方は [DESIGN.md](DESIGN.md)、アドオン（自作ウィジェット）の作り方は [WIDGET.md](WIDGET.md) を見てください。
 
 | 操作 | 方法 |
 |---|---|
