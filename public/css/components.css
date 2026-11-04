@@ -482,10 +482,11 @@
   }
 
   /* タイル表示 */
+  /* 2 段のウィジェットに、タイルが縦に 3 つ入る高さ */
   .link-list--grid .link {
     flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-2);
+    gap: var(--space-1);
+    padding: var(--space-2);
     text-align: center;
     background: var(--tile-bg);
     border: var(--tile-border);
@@ -497,7 +498,7 @@
     font-size: calc(var(--icon-size-tile) * 0.8);
   }
   .link-list--grid .link__icon--letter { font-size: calc(var(--icon-size-tile) * 0.5); }
-  .link-list--grid .link__title { font-size: var(--font-size-sm); width: 100%; }
+  .link-list--grid .link__title { font-size: var(--font-size-sm); line-height: 1.3; width: 100%; }
   .link-list--grid .link__desc { display: none; }
 
   .link-item__edit {
