@@ -3,6 +3,7 @@
  *
  * 状態（state）を 1 つの JSON で持ち、変更のたびに画面を描き直して保存します。
  * 並べ替えには SortableJS（public/vendor/Sortable.min.js）を使っています。
+ * アドオン（自作ウィジェット）の組み込みは、このファイルの末尾にあります（作り方は WIDGET.md）。
  *
  * データ形式（default-dashboard.json も同じ形）:
  * {
