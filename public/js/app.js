@@ -30,6 +30,7 @@ import { THEME_PRESETS, FAVICON_URL, SAVE_DELAY_MS } from "./config.js";
 import * as storage from "./storage.js";
 import { toYouTubeEmbed, toImageUrl } from "./embed.js";
 import { CALENDAR_SCOPE, GMAIL_SCOPE, fetchCalendarEvents, fetchGmailUnread } from "./google.js";
+import { GITHUB_LISTS, describeWeather, fetchGitHub, fetchWeather, geocode } from "./services.js";
 
 const WIDGET_TYPES = {
   links: "リンク集",
@@ -41,13 +42,23 @@ const WIDGET_TYPES = {
   photo: "写真",
   calendar: "Google カレンダー",
   mail: "Gmail",
+  weather: "天気",
+  timer: "タイマー・ポモドーロ",
+  worldclock: "世界時計",
+  habit: "習慣トラッカー",
+  github: "GitHub",
 };
 const DEFAULT_TODO_CATEGORIES = ["仕事", "プライベート"];
 /** ウィジェットの高さ（段数）の選択肢と、種類ごとの初期値 */
 const ROW_OPTIONS = [1, 2, 3, 4];
-const DEFAULT_ROWS = { links: 2, note: 2, clock: 1, search: 1, embed: 2, todo: 3, photo: 2, calendar: 3, mail: 1 };
+const DEFAULT_ROWS = {
+  links: 2, note: 2, clock: 1, search: 1, embed: 2, todo: 3, photo: 2, calendar: 3, mail: 1,
+  weather: 2, timer: 2, worldclock: 2, habit: 2, github: 3,
+};
 /** Google の API を使うウィジェット */
 const GOOGLE_WIDGETS = ["calendar", "mail"];
+/** 外部から読み込んで、一定時間ごとに読み込み直すウィジェット */
+const REMOTE_WIDGETS = ["calendar", "mail", "weather", "github"];
 const CALENDAR_DAYS = [1, 3, 7, 14];
 const MAIL_LABELS = {
   INBOX: { name: "受信トレイ", hash: "inbox" },
@@ -58,11 +69,40 @@ const MAIL_LABELS = {
 /** 写真のスライドショーの切り替え間隔（秒）の選択肢。0 は切り替えない */
 const PHOTO_INTERVALS = [0, 5, 10, 30, 60, 300];
 
+const SIZES = ["s", "m", "l", "xl"];
+const SIZE_NAMES = { s: "S", m: "M", l: "L", xl: "XL" };
+
+/**
+ * 種類ごとの最小サイズ（これより小さいと中身が使いにくいもの）。書いていない種類は S・1 段。
+ * 編集画面ではこれより小さい大きさを選べず、読み込むときもここまで広げる。
+ */
+const MIN_SIZE = {
+  links: { rows: 1 },
+  todo: { size: "m", rows: 2 },      // 幅 S だと入力欄が狭すぎる
+  embed: { rows: 2 },                // 1 段だと動画やカレンダーが小さすぎる
+  calendar: { rows: 2 },
+  timer: { rows: 2 },                // 1 段だと開始ボタンが隠れる
+  habit: { size: "m", rows: 2 },     // 習慣 × 日付の表
+  github: { rows: 2 },
+};
+
+function minSizeOf(type) {
+  return { size: "s", rows: 1, ...(MIN_SIZE[type] || {}) };
+}
+
+/** 幅を最小サイズ以上にそろえる */
+function clampSize(size, type) {
+  const min = SIZES.indexOf(minSizeOf(type).size);
+  const index = SIZES.indexOf(size);
+  return SIZES[Math.max(index < 0 ? 1 : index, min)];
+}
+
+/** 高さ（段数）を選択肢の中で、最小サイズ以上にそろえる */
 function normalizeRows(value, type) {
   const rows = Number(value);
-  return ROW_OPTIONS.includes(rows) ? rows : DEFAULT_ROWS[type] || 2;
+  const valid = ROW_OPTIONS.includes(rows) ? rows : DEFAULT_ROWS[type] || 2;
+  return Math.max(valid, minSizeOf(type).rows);
 }
-const SIZES = ["s", "m", "l", "xl"];
 const DEFAULT_SETTINGS = {
   mode: "auto",
   preset: "",
@@ -207,7 +247,7 @@ function normalizeWidget(w) {
     ...w,
     id: w.id ? String(w.id) : uid(),
     title: typeof w.title === "string" ? w.title : "",
-    size: SIZES.includes(w.size) ? w.size : "m",
+    size: clampSize(w.size, w.type),
     rows: normalizeRows(w.rows, w.type),
   };
   if (widget.type === "links") {
@@ -245,6 +285,7 @@ function normalizeWidget(w) {
     widget.days = CALENDAR_DAYS.includes(Number(w.days)) ? Number(w.days) : 3;
     widget.allCalendars = w.allCalendars !== false;
   }
+  WIDGET_FORMS[widget.type]?.normalize?.(widget);
   if (widget.type === "mail") {
     widget.label = MAIL_LABELS[w.label] ? w.label : "INBOX";
   }
@@ -481,7 +522,7 @@ function render() {
   applyFilter();
   updateClocks();
   // カレンダー・メールは 1 分ごとに見直し、古くなっていたら読み込み直す
-  if (widgets().some((w) => GOOGLE_WIDGETS.includes(w.type))) {
+  if (widgets().some((w) => REMOTE_WIDGETS.includes(w.type))) {
     widgetTimers.push(setInterval(refreshGoogleWidgets, 60 * 1000));
   }
   if (focusAfterRender) {
@@ -521,6 +562,17 @@ function renderWidget(widget) {
         title: "カテゴリーを追加",
         "aria-label": "カテゴリーを追加",
         onclick: () => addTodoCategory(widget),
+      }, "＋"),
+    );
+  }
+  if (widget.type === "habit") {
+    tools.append(
+      h("button", {
+        type: "button",
+        class: "button button--small button--ghost",
+        title: "習慣を追加",
+        "aria-label": "習慣を追加",
+        onclick: () => addHabit(widget),
       }, "＋"),
     );
   }
@@ -567,6 +619,11 @@ function renderWidgetBody(widget) {
     case "photo": return renderPhoto(widget);
     case "calendar": return renderCalendar(widget);
     case "mail": return renderMail(widget);
+    case "weather": return renderWeather(widget);
+    case "timer": return renderTimer(widget);
+    case "worldclock": return renderWorldClock(widget);
+    case "habit": return renderHabit(widget);
+    case "github": return renderGitHub(widget);
     default: return null;
   }
 }
@@ -755,6 +812,8 @@ function updateClocks() {
       $(".clock__date", node).textContent = `タイムゾーン「${timeZone}」が不正です`;
     }
   }
+  updateWorldClocks(now);
+  updateTimers();
 }
 
 function renderSearch(widget) {
@@ -970,7 +1029,7 @@ function scopesFor(type) {
 /** カレンダー・メールのウィジェットの中身を、それぞれ描き直す（読み込み直しの判定も行う） */
 function refreshGoogleWidgets() {
   for (const widget of widgets()) {
-    if (GOOGLE_WIDGETS.includes(widget.type)) refreshWidgetBody(widget);
+    if (REMOTE_WIDGETS.includes(widget.type)) refreshWidgetBody(widget);
   }
 }
 
@@ -1017,8 +1076,23 @@ function renderGoogleWidget(widget, { cacheKey, load, view }) {
     );
   }
 
-  const stale = !entry || entry.key !== cacheKey || Date.now() - entry.fetchedAt > GOOGLE_REFRESH_MS;
-  if (stale && !entry?.loading) loadGoogle(widget, token, cacheKey, load);
+  return renderRemote(widget, {
+    cacheKey,
+    load: () => load(token),
+    view,
+    refreshMs: GOOGLE_REFRESH_MS,
+    onError: (err) => { if (err.expired) storage.forgetGoogleToken(); },
+  });
+}
+
+/**
+ * 外部から読み込んで表示するウィジェットの共通部分（カレンダー・Gmail・天気・GitHub）。
+ * 読み込んだ結果は googleCache に控え、refreshMs ごとに読み込み直す。
+ */
+function renderRemote(widget, { cacheKey, load, view, refreshMs, onError }) {
+  const entry = googleCache.get(widget.id);
+  const stale = !entry || entry.key !== cacheKey || Date.now() - entry.fetchedAt > refreshMs;
+  if (stale && !entry?.loading) loadRemote(widget, cacheKey, load, onError);
   const current = googleCache.get(widget.id);
 
   const updated = current?.fetchedAt
@@ -1053,15 +1127,15 @@ function renderGoogleWidget(widget, { cacheKey, load, view }) {
   );
 }
 
-async function loadGoogle(widget, token, key, load) {
+async function loadRemote(widget, key, load, onError) {
   const entry = { ...(googleCache.get(widget.id) || {}), key, loading: true };
   googleCache.set(widget.id, entry);
   try {
-    entry.data = await load(token);
+    entry.data = await load();
     entry.error = null;
   } catch (err) {
     entry.error = err.message;
-    if (err.expired) storage.forgetGoogleToken();
+    onError?.(err);
   }
   entry.fetchedAt = Date.now();
   entry.loading = false;
@@ -1150,6 +1224,637 @@ function renderMail(widget) {
     ),
   });
 }
+
+/* ================================================================== */
+/* 天気                                                                 */
+/* ================================================================== */
+
+const WEATHER_REFRESH_MS = 30 * 60 * 1000;
+
+function renderWeather(widget) {
+  if (!widget.place && widget.lat == null) {
+    return h("p", { class: "widget__empty" }, "「編集」→ ✎ で地域を設定してください（例：東京、大阪市、札幌）");
+  }
+  return renderRemote(widget, {
+    // 地名で調べた緯度・経度は読み込みの途中で決まるので、キーには含めない（「現在地」のときだけ含める）
+    cacheKey: widget.place === "現在地" ? `here:${widget.lat},${widget.lon}` : `place:${widget.place}`,
+    refreshMs: WEATHER_REFRESH_MS,
+    load: async () => {
+      // 地名だけ設定されていて、緯度・経度がまだなら調べて控える
+      if (widget.lat == null || widget.geocodedPlace !== widget.place) {
+        const found = await geocode(widget.place);
+        Object.assign(widget, { lat: found.lat, lon: found.lon, placeLabel: found.label, geocodedPlace: widget.place });
+        scheduleSave();
+      }
+      return fetchWeather(widget.lat, widget.lon);
+    },
+    view: (data) => renderWeatherView(widget, data),
+  });
+}
+
+function renderWeatherView(widget, { current, daily }) {
+  const now = describeWeather(current.code);
+  const icon = !current.isDay && now.icon === "☀️" ? "🌙" : now.icon;
+  const round = (n) => (n == null ? "–" : Math.round(n));
+  const weekday = (date, i) => i === 0 ? "今日" : i === 1 ? "明日"
+    : new Date(`${date}T00:00:00`).toLocaleDateString("ja-JP", { weekday: "short" });
+  return h("div", { class: "weather" },
+    h("div", { class: "weather__now" },
+      h("span", { class: "weather__icon", "aria-hidden": "true" }, icon),
+      h("span", { class: "weather__temp" }, `${round(current.temp)}°`),
+      h("span", { class: "weather__detail" },
+        h("span", { class: "weather__place" }, widget.placeLabel || widget.place || "現在地"),
+        h("span", {}, `${now.text}　最高 ${round(daily[0]?.max)}° / 最低 ${round(daily[0]?.min)}°`),
+        h("span", { class: "weather__sub" },
+          `体感 ${round(current.feels)}°・湿度 ${round(current.humidity)}%・風 ${round(current.wind)}m/s・降水 ${round(daily[0]?.rain)}%`),
+      ),
+    ),
+    h("ol", { class: "weather__days" },
+      ...daily.slice(1).map((d, i) => {
+        const w = describeWeather(d.code);
+        return h("li", { class: "weather__day", title: w.text },
+          h("span", { class: "weather__day-name" }, weekday(d.date, i + 1)),
+          h("span", { class: "weather__day-icon", "aria-label": w.text }, w.icon),
+          h("span", { class: "weather__day-temp" }, `${round(d.max)}° / ${round(d.min)}°`),
+          h("span", { class: "weather__day-rain" }, `☂ ${round(d.rain)}%`),
+        );
+      }),
+    ),
+  );
+}
+
+/* ================================================================== */
+/* タイマー・ポモドーロ                                                  */
+/* ================================================================== */
+
+/*
+ * 動いているタイマーの状態は、この端末の localStorage にだけ保存する（ほかの端末とは共有しない）。
+ * 終了時刻（endAt）で持つので、再読み込みしても続きから数える。
+ */
+const TIMER_PHASES = { work: "作業", short: "休憩", long: "長い休憩", timer: "タイマー" };
+
+function timerKey(widget) {
+  return `personal-dashboard:timer:${widget.id}`;
+}
+
+function phaseMinutes(widget, phase) {
+  if (phase === "work") return widget.work;
+  if (phase === "short") return widget.short;
+  if (phase === "long") return widget.long;
+  return widget.minutes;
+}
+
+function readTimer(widget) {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(timerKey(widget)) || "null"); } catch { /* 使えない環境 */ }
+  const firstPhase = widget.mode === "pomodoro" ? "work" : "timer";
+  const valid = saved && TIMER_PHASES[saved.phase] && (widget.mode === "pomodoro") === (saved.phase !== "timer");
+  if (valid) return saved;
+  return { phase: firstPhase, running: false, endAt: 0, remaining: phaseMinutes(widget, firstPhase) * 60000, count: 0 };
+}
+
+function writeTimer(widget, t) {
+  try { localStorage.setItem(timerKey(widget), JSON.stringify(t)); } catch { /* 使えない環境 */ }
+}
+
+function timerRemaining(t) {
+  return t.running ? Math.max(0, t.endAt - Date.now()) : t.remaining;
+}
+
+function formatDuration(ms) {
+  const total = Math.ceil(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function renderTimer(widget) {
+  const t = readTimer(widget);
+  const running = t.running;
+  const control = (label, aria, onclick, extra = "") => h("button", {
+    type: "button", class: `button ${extra}`, "aria-label": aria, title: aria, onclick,
+  }, label);
+
+  const start = () => {
+    requestNotificationPermission();
+    const cur = readTimer(widget);
+    writeTimer(widget, { ...cur, running: true, endAt: Date.now() + cur.remaining });
+    refreshWidgetBody(widget);
+  };
+  const pause = () => {
+    const cur = readTimer(widget);
+    writeTimer(widget, { ...cur, running: false, remaining: timerRemaining(cur) });
+    refreshWidgetBody(widget);
+  };
+  const reset = () => {
+    const first = widget.mode === "pomodoro" ? "work" : "timer";
+    writeTimer(widget, { phase: first, running: false, endAt: 0, remaining: phaseMinutes(widget, first) * 60000, count: 0 });
+    refreshWidgetBody(widget);
+  };
+  const skip = () => finishTimer(widget, { silent: true });
+
+  const total = phaseMinutes(widget, t.phase) * 60000;
+  return h("div", { class: `timer timer--${t.phase}${running ? " is-running" : ""}`, dataset: { widgetId: widget.id } },
+    h("div", { class: "timer__head" },
+      h("span", { class: "timer__phase" }, TIMER_PHASES[t.phase]),
+      widget.mode === "pomodoro" ? h("span", { class: "timer__count", title: "完了した作業の回数" },
+        ...Array.from({ length: widget.longEvery }, (_, i) =>
+          h("span", { class: `timer__dot${i < t.count % widget.longEvery ? " is-done" : ""}` })),
+        h("span", { class: "timer__count-total" }, ` ${t.count} 回`)) : null,
+    ),
+    h("span", { class: "timer__time", "aria-live": "off" }, formatDuration(timerRemaining(t))),
+    h("span", { class: "timer__bar", "aria-hidden": "true" },
+      h("span", { class: "timer__bar-fill", style: { width: `${100 - (timerRemaining(t) / total) * 100}%` } })),
+    h("div", { class: "timer__controls" },
+      running
+        ? control("⏸ 一時停止", "一時停止", pause, "button--primary")
+        : control("▶ 開始", "開始", start, "button--primary"),
+      control("↺", "リセット", reset),
+      widget.mode === "pomodoro" ? control("⏭", "次へ進む", skip) : null,
+    ),
+  );
+}
+
+/** 1 秒ごと：残り時間を表示し、終わったタイマーを片付ける */
+function updateTimers() {
+  if (!state) return;
+  for (const node of $$(".timer[data-widget-id]", el.dashboard)) {
+    const widget = widgets().find((w) => w.id === node.dataset.widgetId);
+    if (!widget) continue;
+    const t = readTimer(widget);
+    const left = timerRemaining(t);
+    $(".timer__time", node).textContent = formatDuration(left);
+    const total = phaseMinutes(widget, t.phase) * 60000;
+    $(".timer__bar-fill", node).style.width = `${100 - (left / total) * 100}%`;
+    if (t.running && left <= 0) finishTimer(widget);
+  }
+}
+
+function finishTimer(widget, { silent = false } = {}) {
+  const t = readTimer(widget);
+  const name = widget.title || "タイマー";
+  if (widget.mode !== "pomodoro") {
+    writeTimer(widget, { ...t, running: false, endAt: 0, remaining: widget.minutes * 60000 });
+    if (!silent) notifyDone(`${name}：${widget.minutes} 分が経ちました`, widget);
+    refreshWidgetBody(widget);
+    return;
+  }
+  let { phase, count } = t;
+  if (phase === "work") {
+    count += silent ? 0 : 1;
+    phase = count > 0 && count % widget.longEvery === 0 && !silent ? "long" : "short";
+  } else {
+    phase = "work";
+  }
+  const next = phaseMinutes(widget, phase) * 60000;
+  const autoStart = widget.autoNext && !silent;
+  writeTimer(widget, { phase, count, running: autoStart, endAt: autoStart ? Date.now() + next : 0, remaining: next });
+  if (!silent) {
+    notifyDone(phase === "work"
+      ? `${name}：休憩おわり。次の作業（${widget.work} 分）を始めましょう`
+      : `${name}：作業おわり。${TIMER_PHASES[phase]}（${phaseMinutes(widget, phase)} 分）にしましょう`, widget);
+  }
+  refreshWidgetBody(widget);
+}
+
+function requestNotificationPermission() {
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+function notifyDone(message, widget) {
+  showToast(`⏰ ${message}`);
+  if (widget.sound !== false) playChime();
+  if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+    try { new Notification("ダッシュボード", { body: message, tag: `timer-${widget.id}` }); } catch { /* 使えない環境 */ }
+  }
+}
+
+/** 終了の合図の音（3 回鳴らす） */
+function playChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.35, 0.7].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + delay + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + 0.3);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.32);
+    });
+    setTimeout(() => ctx.close(), 1500);
+  } catch { /* 音が出せない環境 */ }
+}
+
+/* ================================================================== */
+/* 世界時計                                                              */
+/* ================================================================== */
+
+const DEFAULT_WORLD_ZONES = [
+  { label: "東京", tz: "Asia/Tokyo" },
+  { label: "ロンドン", tz: "Europe/London" },
+  { label: "ニューヨーク", tz: "America/New_York" },
+];
+
+function isValidTimeZone(tz) {
+  try {
+    new Intl.DateTimeFormat("ja-JP", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 「表示名=タイムゾーン」の行を読み取る */
+function parseWorldZones(text) {
+  const zones = [];
+  const invalid = [];
+  for (const line of String(text).split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const [left, right] = trimmed.includes("=") ? trimmed.split("=", 2) : [trimmed, trimmed];
+    const tz = right.trim();
+    const label = left.trim() || tz.split("/").pop().replace(/_/g, " ");
+    if (isValidTimeZone(tz)) zones.push({ id: uid(), label, tz });
+    else invalid.push(trimmed);
+  }
+  return { zones, invalid };
+}
+
+function renderWorldClock(widget) {
+  if (widget.zones.length === 0) {
+    return h("p", { class: "widget__empty" }, "「編集」→ ✎ で表示する都市を設定してください");
+  }
+  return h("ul", { class: "wclock" },
+    ...widget.zones.map((z) => h("li", { class: "wclock__row", dataset: { tz: z.tz } },
+      h("span", { class: "wclock__icon", "aria-hidden": "true" }),
+      h("span", { class: "wclock__label" }, z.label),
+      h("span", { class: "wclock__time" }),
+      h("span", { class: "wclock__diff" }),
+    )),
+  );
+}
+
+function zonedParts(date, tz) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", hourCycle: "h23",
+  }).formatToParts(date).map((p) => [p.type, p.value]));
+  return { y: +parts.year, mo: +parts.month, d: +parts.day, h: +parts.hour, mi: +parts.minute };
+}
+
+function updateWorldClocks(now) {
+  const rows = $$(".wclock__row", el.dashboard);
+  if (rows.length === 0) return;
+  const local = { y: now.getFullYear(), mo: now.getMonth() + 1, d: now.getDate(), h: now.getHours(), mi: now.getMinutes() };
+  const minutesOf = (p) => Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi) / 60000;
+  for (const row of rows) {
+    const tz = row.dataset.tz;
+    let p;
+    try { p = zonedParts(now, tz); } catch { continue; }
+    $(".wclock__time", row).textContent = `${String(p.h).padStart(2, "0")}:${String(p.mi).padStart(2, "0")}`;
+    $(".wclock__icon", row).textContent = p.h >= 6 && p.h < 18 ? "☀️" : "🌙";
+    const diffMin = minutesOf(p) - minutesOf(local);
+    const dayDiff = Date.UTC(p.y, p.mo - 1, p.d) / 86400000 - Date.UTC(local.y, local.mo - 1, local.d) / 86400000;
+    const hours = diffMin / 60;
+    const sign = hours > 0 ? "+" : hours < 0 ? "−" : "±";
+    const abs = Math.abs(hours);
+    const offset = Number.isInteger(abs) ? `${abs}` : abs.toFixed(1);
+    const day = dayDiff === 0 ? "今日" : dayDiff > 0 ? "明日" : "昨日";
+    $(".wclock__diff", row).textContent = `${day} ${sign}${offset}時間`;
+  }
+}
+
+/* ================================================================== */
+/* 習慣トラッカー                                                        */
+/* ================================================================== */
+
+const HABIT_DAYS = [7, 14];
+
+function dateKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** 今日（記録がまだなら昨日）から、続けて記録した日数 */
+function habitStreak(done) {
+  const day = new Date();
+  if (!done.has(dateKey(day))) day.setDate(day.getDate() - 1);
+  let streak = 0;
+  while (done.has(dateKey(day))) {
+    streak += 1;
+    day.setDate(day.getDate() - 1);
+  }
+  return streak;
+}
+
+function renderHabit(widget) {
+  if (widget.habits.length === 0) {
+    return h("p", { class: "widget__empty" },
+      editing ? "見出しの「＋」で習慣を追加してください（例：運動、読書、日記）" : "習慣がありません。「編集」→ 見出しの「＋」で追加できます");
+  }
+  const today = new Date();
+  const days = Array.from({ length: widget.days }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (widget.days - 1 - i));
+    return d;
+  });
+  const head = h("tr", {},
+    h("th", { class: "habit__name-head", scope: "col" }, ""),
+    ...days.map((d, i) => h("th", { scope: "col", class: i === days.length - 1 ? "is-today" : "" },
+      h("span", { class: "habit__dow" }, d.toLocaleDateString("ja-JP", { weekday: "narrow" })),
+      h("span", { class: "habit__date" }, String(d.getDate())))),
+    h("th", { scope: "col", class: "habit__streak-head", title: "連続日数" }, "連続"),
+  );
+  const rows = widget.habits.map((habit) => {
+    const done = new Set(widget.log[habit.id] || []);
+    return h("tr", { dataset: { id: habit.id } },
+      h("th", { scope: "row", class: "habit__name" },
+        h("span", { class: "habit__name-text" }, habit.name),
+        h("span", { class: "habit__tools" },
+          h("button", {
+            type: "button", class: "button button--small button--ghost", "aria-label": `「${habit.name}」の名前を変える`, title: "名前を変える",
+            onclick: async () => {
+              const name = await askText({ title: "習慣の名前を変える", label: "習慣", value: habit.name });
+              if (!name) return;
+              habit.name = name;
+              commit();
+            },
+          }, "✎"),
+          h("button", {
+            type: "button", class: "button button--small button--ghost button--danger", "aria-label": `「${habit.name}」を削除`, title: "削除",
+            onclick: () => {
+              if (!confirm(`習慣「${habit.name}」と、その記録を削除しますか？`)) return;
+              widget.habits = widget.habits.filter((x) => x.id !== habit.id);
+              delete widget.log[habit.id];
+              commit();
+            },
+          }, "×"),
+        ),
+      ),
+      ...days.map((d, i) => {
+        const key = dateKey(d);
+        const on = done.has(key);
+        return h("td", { class: i === days.length - 1 ? "is-today" : "" },
+          h("button", {
+            type: "button",
+            class: `habit__cell${on ? " is-done" : ""}`,
+            "aria-pressed": String(on),
+            "aria-label": `${habit.name}：${d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" })}`,
+            onclick: () => {
+              const set = new Set(widget.log[habit.id] || []);
+              if (set.has(key)) set.delete(key);
+              else set.add(key);
+              widget.log[habit.id] = pruneHabitLog([...set]);
+              commit();
+            },
+          }, on ? "✓" : ""),
+        );
+      }),
+      h("td", { class: "habit__streak" }, (() => {
+        const s = habitStreak(done);
+        return s > 0 ? `🔥${s}` : "–";
+      })()),
+    );
+  });
+  return h("div", { class: "habit" },
+    h("table", { class: "habit__table" }, h("thead", {}, head), h("tbody", {}, ...rows)));
+}
+
+/** 記録は 1 年分だけ残す（データが大きくなりすぎないように） */
+function pruneHabitLog(keys) {
+  const limit = new Date();
+  limit.setDate(limit.getDate() - 400);
+  const min = dateKey(limit);
+  return keys.filter((k) => k >= min).sort();
+}
+
+async function addHabit(widget) {
+  const name = await askText({ title: "習慣を追加", label: "習慣（例：運動 30 分、読書、日記）", value: "" });
+  if (!name) return;
+  widget.habits.push({ id: uid(), name });
+  commit();
+}
+
+/* ================================================================== */
+/* GitHub                                                               */
+/* ================================================================== */
+
+const GITHUB_TOKEN_KEY = "personal-dashboard:github-token";
+const GITHUB_REFRESH_MS = 5 * 60 * 1000;
+
+function getGitHubToken() {
+  try { return localStorage.getItem(GITHUB_TOKEN_KEY) || ""; } catch { return ""; }
+}
+
+function setGitHubToken(token) {
+  try {
+    if (token) localStorage.setItem(GITHUB_TOKEN_KEY, token);
+    else localStorage.removeItem(GITHUB_TOKEN_KEY);
+  } catch { /* 使えない環境 */ }
+  // GitHub のウィジェットだけ読み込み直す（天気などの控えは残す）
+  for (const w of widgets()) if (w.type === "github") googleCache.delete(w.id);
+}
+
+async function askGitHubToken() {
+  const token = await askText({
+    title: "GitHub のトークンを設定",
+    label: "個人用アクセストークン（この端末のブラウザにだけ保存し、サーバーには送りません）",
+    value: "",
+  });
+  if (!token) return;
+  setGitHubToken(token);
+  refreshRemoteWidgets();
+}
+
+function refreshRemoteWidgets() {
+  for (const widget of widgets()) {
+    if (REMOTE_WIDGETS.includes(widget.type)) refreshWidgetBody(widget);
+  }
+}
+
+function renderGitHub(widget) {
+  const token = getGitHubToken();
+  if (!token) {
+    return h("div", { class: "google-connect" },
+      h("p", { class: "widget__empty" },
+        "GitHub の個人用アクセストークンを、この端末に設定すると表示できます（README の「GitHub」を参照）。"),
+      h("button", { type: "button", class: "button button--primary", onclick: askGitHubToken }, "トークンを設定"),
+    );
+  }
+  if (widget.lists.length === 0) {
+    return h("p", { class: "widget__empty" }, "「編集」→ ✎ で表示する一覧を選んでください");
+  }
+  return renderRemote(widget, {
+    cacheKey: `${widget.lists.join(",")}:${widget.limit}:${token.length}`,
+    refreshMs: GITHUB_REFRESH_MS,
+    load: () => fetchGitHub(token, widget.lists, widget.limit),
+    onError: (err) => {
+      if (err.unauthorized) {
+        setGitHubToken("");
+        showToast(err.message);
+      }
+    },
+    view: (data) => renderGitHubLists(data),
+  });
+}
+
+function relativeTime(date) {
+  if (!date) return "";
+  const min = Math.round((Date.now() - date) / 60000);
+  if (min < 60) return `${Math.max(min, 1)} 分前`;
+  const hours = Math.round(min / 60);
+  if (hours < 24) return `${hours} 時間前`;
+  const days = Math.round(hours / 24);
+  return days < 30 ? `${days} 日前` : date.toLocaleDateString("ja-JP");
+}
+
+function renderGitHubLists({ lists }) {
+  return h("div", { class: "gh" },
+    ...lists.map((list) => h("section", { class: "gh-list" },
+      h("h3", { class: "gh-list__label" }, list.label, h("span", { class: "gh-list__count" }, String(list.total))),
+      list.items.length === 0
+        ? h("p", { class: "gh-list__empty" }, "ありません")
+        : h("ul", { class: "gh-items" },
+          ...list.items.map((it) => h("li", { class: "gh-item" },
+            h("a", { class: "gh-item__link", href: it.url, target: "_blank", rel: "noopener noreferrer", title: it.title },
+              h("span", { class: "gh-item__title" }, it.draft ? `[Draft] ${it.title}` : it.title),
+              h("span", { class: "gh-item__meta" }, `${it.repo} #${it.number}・${relativeTime(it.updated)}`),
+            ),
+          ))),
+    )),
+  );
+}
+
+/* ================================================================== */
+/* ウィジェットの設定欄（種類ごと）                                        */
+/* ================================================================== */
+
+/*
+ * normalize：読み込んだデータの補正 / init：新しく作るときの初期値
+ * fill：編集ダイアログに今の値を入れる（widget が null なら初期値）/ save：ダイアログの値を保存
+ */
+const WIDGET_FORMS = {
+  weather: {
+    normalize: (w) => {
+      w.place = typeof w.place === "string" ? w.place : "";
+      if (typeof w.lat !== "number" || typeof w.lon !== "number") { delete w.lat; delete w.lon; }
+    },
+    fill: (f, w) => {
+      f.weatherPlace.value = w?.place || "";
+      f.weatherLat.value = w?.lat ?? "";
+      f.weatherLon.value = w?.lon ?? "";
+    },
+    save: (f, w) => {
+      const place = f.weatherPlace.value.trim();
+      const lat = Number(f.weatherLat.value);
+      const lon = Number(f.weatherLon.value);
+      if (f.weatherLat.value !== "" && Number.isFinite(lat) && Number.isFinite(lon)) {
+        // 「現在地を使う」で緯度・経度が入っている
+        Object.assign(w, { place: place || "現在地", lat, lon, placeLabel: place || "現在地", geocodedPlace: place || "現在地" });
+      } else if (place !== w.place) {
+        Object.assign(w, { place });
+        delete w.lat; delete w.lon; delete w.placeLabel; delete w.geocodedPlace;
+      }
+    },
+  },
+  timer: {
+    normalize: (w) => {
+      const num = (v, d, min, max) => Math.min(max, Math.max(min, Math.round(Number(v)) || d));
+      w.mode = w.mode === "timer" ? "timer" : "pomodoro";
+      w.work = num(w.work, 25, 1, 180);
+      w.short = num(w.short, 5, 1, 60);
+      w.long = num(w.long, 15, 1, 120);
+      w.longEvery = num(w.longEvery, 4, 2, 8);
+      w.minutes = num(w.minutes, 10, 1, 600);
+      w.autoNext = Boolean(w.autoNext);
+      w.sound = w.sound !== false;
+    },
+    fill: (f, w) => {
+      f.timerMode.value = w?.mode || "pomodoro";
+      f.timerWork.value = w?.work ?? 25;
+      f.timerShort.value = w?.short ?? 5;
+      f.timerLong.value = w?.long ?? 15;
+      f.timerLongEvery.value = w?.longEvery ?? 4;
+      f.timerMinutes.value = w?.minutes ?? 10;
+      f.timerAutoNext.checked = Boolean(w?.autoNext);
+      f.timerSound.checked = w?.sound !== false;
+    },
+    save: (f, w) => {
+      const before = JSON.stringify([w.mode, w.work, w.short, w.long, w.minutes]);
+      Object.assign(w, {
+        mode: f.timerMode.value,
+        work: f.timerWork.value,
+        short: f.timerShort.value,
+        long: f.timerLong.value,
+        longEvery: f.timerLongEvery.value,
+        minutes: f.timerMinutes.value,
+        autoNext: f.timerAutoNext.checked,
+        sound: f.timerSound.checked,
+      });
+      WIDGET_FORMS.timer.normalize(w);
+      // 時間の設定を変えたら、止まっているタイマーは新しい時間で始め直す
+      if (before !== JSON.stringify([w.mode, w.work, w.short, w.long, w.minutes]) && !readTimer(w).running) {
+        try { localStorage.removeItem(timerKey(w)); } catch { /* 使えない環境 */ }
+      }
+    },
+  },
+  worldclock: {
+    init: (w) => { w.zones = DEFAULT_WORLD_ZONES.map((z) => ({ id: uid(), ...z })); },
+    normalize: (w) => {
+      w.zones = (Array.isArray(w.zones) ? w.zones : [])
+        .filter((z) => z && typeof z.tz === "string" && isValidTimeZone(z.tz))
+        .map((z) => ({ id: z.id ? String(z.id) : uid(), label: typeof z.label === "string" ? z.label : z.tz, tz: z.tz }));
+    },
+    fill: (f, w) => {
+      const zones = w ? w.zones : DEFAULT_WORLD_ZONES;
+      f.worldZones.value = zones.map((z) => `${z.label}=${z.tz}`).join("\n");
+    },
+    save: (f, w) => {
+      const { zones, invalid } = parseWorldZones(f.worldZones.value);
+      w.zones = zones;
+      if (invalid.length) showToast(`読み取れなかった行があります：${invalid.join("、")}`);
+    },
+  },
+  habit: {
+    init: (w) => { w.habits = []; w.log = {}; },
+    normalize: (w) => {
+      w.habits = (Array.isArray(w.habits) ? w.habits : [])
+        .filter((x) => x && typeof x.name === "string")
+        .map((x) => ({ id: x.id ? String(x.id) : uid(), name: x.name }));
+      const log = w.log && typeof w.log === "object" ? w.log : {};
+      w.log = {};
+      for (const habit of w.habits) {
+        const keys = Array.isArray(log[habit.id]) ? log[habit.id].filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)) : [];
+        if (keys.length) w.log[habit.id] = pruneHabitLog(keys);
+      }
+      w.days = HABIT_DAYS.includes(Number(w.days)) ? Number(w.days) : 7;
+    },
+    fill: (f, w) => { f.habitDays.value = String(w?.days || 7); },
+    save: (f, w) => { w.days = HABIT_DAYS.includes(Number(f.habitDays.value)) ? Number(f.habitDays.value) : 7; },
+  },
+  github: {
+    normalize: (w) => {
+      w.lists = (Array.isArray(w.lists) ? w.lists : ["review", "mine", "assigned"]).filter((k) => GITHUB_LISTS[k]);
+      w.limit = [5, 10, 20].includes(Number(w.limit)) ? Number(w.limit) : 5;
+    },
+    fill: (f, w) => {
+      const lists = w ? w.lists : ["review", "mine", "assigned"];
+      for (const box of f.githubLists) box.checked = lists.includes(box.value);
+      f.githubLimit.value = String(w?.limit || 5);
+      $("#github-token-state").textContent = getGitHubToken()
+        ? "この端末にはトークンが設定されています。"
+        : "この端末にはトークンが設定されていません（ウィジェットの「トークンを設定」から設定します）。";
+      $("#github-token-clear").hidden = !getGitHubToken();
+    },
+    save: (f, w) => {
+      w.lists = [...f.githubLists].filter((b) => b.checked).map((b) => b.value);
+      w.limit = [5, 10, 20].includes(Number(f.githubLimit.value)) ? Number(f.githubLimit.value) : 5;
+    },
+  },
+};
 
 /* ================================================================== */
 /* ToDo                                                                 */
@@ -1705,14 +2410,73 @@ function openWidgetDialog(widgetId) {
   f.allCalendars.checked = widget?.allCalendars !== false;
   f.mailLabel.value = widget?.label || "INBOX";
   f.photoInterval.value = String(widget?.interval ?? 10);
+  // 追加したウィジェットの種類ごとの設定欄（WIDGET_FORMS）
+  for (const [type, form] of Object.entries(WIDGET_FORMS)) form.fill(f, widget?.type === type ? widget : null);
   el.widgetDelete.hidden = !widget;
   updateWidgetFormVisibility();
+  updateSizeOptions();
   el.widgetDialog.returnValue = "";
   el.widgetDialog.showModal();
 }
 
+/** 種類に合わせて、最小サイズより小さい幅・高さを選べないようにする */
+function updateSizeOptions() {
+  const f = el.widgetForm.elements;
+  const min = minSizeOf(f.type.value);
+  for (const option of f.size.options) option.disabled = SIZES.indexOf(option.value) < SIZES.indexOf(min.size);
+  for (const option of f.rows.options) option.disabled = Number(option.value) < min.rows;
+  f.size.value = clampSize(f.size.value, f.type.value);
+  if (Number(f.rows.value) < min.rows) f.rows.value = String(min.rows);
+  const hint = $("#size-hint");
+  const isMin = min.size !== "s" || min.rows > 1;
+  hint.hidden = !isMin;
+  hint.textContent = isMin ? `この種類の最小サイズ：幅 ${SIZE_NAMES[min.size]}・高さ ${min.rows} 段` : "";
+}
+
 el.widgetForm.elements.accent.addEventListener("input", () => {
   el.widgetForm.elements.useAccent.checked = true;
+});
+
+// タイマー：選んだ種類に関係する時間の欄だけ見せる
+function updateTimerFields() {
+  const mode = el.widgetForm.elements.timerMode.value;
+  for (const label of $$("[data-timer-mode]", el.widgetForm)) label.hidden = label.dataset.timerMode !== mode;
+}
+el.widgetForm.elements.timerMode.addEventListener("change", updateTimerFields);
+el.widgetForm.elements.type.addEventListener("change", updateTimerFields);
+el.widgetDialog.addEventListener("toggle", updateTimerFields);
+
+// 天気：ブラウザの位置情報で、現在地の緯度・経度を入れる
+$("#weather-here").addEventListener("click", () => {
+  const f = el.widgetForm.elements;
+  if (!navigator.geolocation) {
+    showToast("このブラウザでは現在地を使えません");
+    return;
+  }
+  const button = $("#weather-here");
+  button.disabled = true;
+  navigator.geolocation.getCurrentPosition((pos) => {
+    f.weatherLat.value = pos.coords.latitude.toFixed(4);
+    f.weatherLon.value = pos.coords.longitude.toFixed(4);
+    f.weatherPlace.value = "現在地";
+    button.disabled = false;
+  }, () => {
+    showToast("現在地を取得できませんでした。ブラウザで位置情報の利用を許可してください");
+    button.disabled = false;
+  }, { timeout: 10000, maximumAge: 600000 });
+});
+// 地名を書き換えたら、現在地の緯度・経度は使わない
+el.widgetForm.elements.weatherPlace.addEventListener("input", () => {
+  el.widgetForm.elements.weatherLat.value = "";
+  el.widgetForm.elements.weatherLon.value = "";
+});
+
+// GitHub：この端末に保存したトークンを消す
+$("#github-token-clear").addEventListener("click", () => {
+  if (!confirm("この端末に保存した GitHub のトークンを削除しますか？")) return;
+  setGitHubToken("");
+  WIDGET_FORMS.github.fill(el.widgetForm.elements, widgets().find((w) => w.id === editingWidgetId) || null);
+  refreshRemoteWidgets();
 });
 
 // 新しく追加するときは、種類を変えたら高さ（段数）もその種類の初期値にする
@@ -1720,6 +2484,7 @@ el.widgetForm.elements.type.addEventListener("change", () => {
   if (!editingWidgetId) {
     el.widgetForm.elements.rows.value = String(DEFAULT_ROWS[el.widgetForm.elements.type.value] || 2);
   }
+  updateSizeOptions();
 });
 
 el.widgetDialog.addEventListener("close", () => {
@@ -1735,11 +2500,13 @@ el.widgetDialog.addEventListener("close", () => {
       widget.categories = DEFAULT_TODO_CATEGORIES.map((name) => ({ id: uid(), name }));
       widget.items = [];
     }
+    WIDGET_FORMS[widget.type]?.init?.(widget);
     widgets().push(widget);
   }
   widget.title = f.title.value.trim();
-  widget.size = SIZES.includes(f.size.value) ? f.size.value : "m";
+  widget.size = clampSize(f.size.value, widget.type);
   widget.rows = normalizeRows(f.rows.value, widget.type);
+  WIDGET_FORMS[widget.type]?.save(f, widget);
   if (f.useAccent.checked && isHexColor(f.accent.value)) widget.accent = f.accent.value;
   else delete widget.accent;
 

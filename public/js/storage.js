@@ -121,6 +121,7 @@ export async function signIn() {
 export async function signOut() {
   if (currentUser) writeLocal(`data:${currentUser.uid}`, null); // この端末に残した控えも消す
   writeLocal("google-token", null);
+  writeLocal("github-token", null);
   await fb.authMod.signOut(fb.auth);
 }
 

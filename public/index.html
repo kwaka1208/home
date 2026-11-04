@@ -78,6 +78,11 @@
           <option value="photo">写真（スライドショー）</option>
           <option value="calendar">Google カレンダー（予定の一覧）</option>
           <option value="mail">Gmail（未読の件数）</option>
+          <option value="weather">天気</option>
+          <option value="timer">タイマー・ポモドーロ</option>
+          <option value="worldclock">世界時計</option>
+          <option value="habit">習慣トラッカー</option>
+          <option value="github">GitHub（プルリクエスト・Issue）</option>
         </select>
       </label>
 
@@ -109,6 +114,7 @@
           <option value="3">3 段</option>
           <option value="4">4 段</option>
         </select>
+        <span class="field__hint" id="size-hint" hidden></span>
       </label>
 
       <label class="field">
@@ -164,6 +170,80 @@
           <option value="STARRED">スター付き</option>
         </select>
       </label>
+
+      <!-- 天気 -->
+      <label class="field" data-for-type="weather">
+        <span class="field__label">地域（市区町村名など。例：東京、大阪市、札幌、London）</span>
+        <span class="field__row">
+          <input class="input" name="weatherPlace" style="flex: 1; width: auto;" placeholder="東京">
+          <button type="button" class="button" id="weather-here">現在地を使う</button>
+        </span>
+        <input type="hidden" name="weatherLat">
+        <input type="hidden" name="weatherLon">
+      </label>
+
+      <!-- タイマー・ポモドーロ -->
+      <label class="field" data-for-type="timer">
+        <span class="field__label">種類</span>
+        <select class="input" name="timerMode">
+          <option value="pomodoro">ポモドーロ（作業と休憩をくり返す）</option>
+          <option value="timer">タイマー（決めた時間を数える）</option>
+        </select>
+      </label>
+      <div class="field" data-for-type="timer">
+        <span class="field__label">時間（分）</span>
+        <span class="field__row timer-fields">
+          <label data-timer-mode="pomodoro">作業 <input class="input input--number" type="number" name="timerWork" min="1" max="180"></label>
+          <label data-timer-mode="pomodoro">休憩 <input class="input input--number" type="number" name="timerShort" min="1" max="60"></label>
+          <label data-timer-mode="pomodoro">長い休憩 <input class="input input--number" type="number" name="timerLong" min="1" max="120"></label>
+          <label data-timer-mode="pomodoro">長い休憩までの回数 <input class="input input--number" type="number" name="timerLongEvery" min="2" max="8"></label>
+          <label data-timer-mode="timer">タイマー <input class="input input--number" type="number" name="timerMinutes" min="1" max="600"></label>
+        </span>
+      </div>
+      <label class="checkbox" data-for-type="timer">
+        <input type="checkbox" name="timerAutoNext"> ポモドーロで、終わったら次（休憩・作業）を自動で始める
+      </label>
+      <label class="checkbox" data-for-type="timer">
+        <input type="checkbox" name="timerSound"> 終わったら音を鳴らす
+      </label>
+
+      <!-- 世界時計 -->
+      <label class="field" data-for-type="worldclock">
+        <span class="field__label">都市（1 行に「表示名=タイムゾーン」。例：パリ=Europe/Paris、シドニー=Australia/Sydney）</span>
+        <textarea class="input" name="worldZones" rows="5" spellcheck="false"></textarea>
+        <span class="field__hint">タイムゾーンの名前は <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones" target="_blank" rel="noopener noreferrer">一覧（英語）</a> の「TZ identifier」で調べられます</span>
+      </label>
+
+      <!-- 習慣トラッカー -->
+      <label class="field" data-for-type="habit">
+        <span class="field__label">表示する日数</span>
+        <select class="input" name="habitDays">
+          <option value="7">7 日（1 週間）</option>
+          <option value="14">14 日（2 週間）</option>
+        </select>
+      </label>
+
+      <!-- GitHub -->
+      <fieldset class="fieldset" data-for-type="github">
+        <legend class="field__label">表示する一覧</legend>
+        <label class="checkbox"><input type="checkbox" name="githubLists" value="review"> レビューを頼まれているプルリクエスト</label>
+        <label class="checkbox"><input type="checkbox" name="githubLists" value="mine"> 自分が作った、開いているプルリクエスト</label>
+        <label class="checkbox"><input type="checkbox" name="githubLists" value="assigned"> 自分が担当の、開いている Issue</label>
+      </fieldset>
+      <label class="field" data-for-type="github">
+        <span class="field__label">一覧ごとの表示件数</span>
+        <select class="input" name="githubLimit">
+          <option value="5">5 件</option>
+          <option value="10">10 件</option>
+          <option value="20">20 件</option>
+        </select>
+      </label>
+      <div class="field" data-for-type="github">
+        <span class="field__hint" id="github-token-state"></span>
+        <span class="field__row">
+          <button type="button" class="button button--small button--danger" id="github-token-clear">この端末のトークンを削除</button>
+        </span>
+      </div>
 
       <label class="checkbox" data-for-type="note">
         <input type="checkbox" name="noteMarkdown"> Markdown で書式を付けて表示する（見出し・箇条書き・チェックボックス・リンクなど）
