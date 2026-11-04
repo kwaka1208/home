@@ -9,13 +9,13 @@
  *
  * 未設定のままだと「ローカルモード」で動き、データはこのブラウザにだけ保存されます。
  */
-export const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+const firebaseConfig = {
+  apiKey: "AIzaSyB2yBqGXkrxuqkfHL84RXc8vlc72yWhQMU",
+  authDomain: "persona-dashboard-a823f.firebaseapp.com",
+  projectId: "persona-dashboard-a823f",
+  storageBucket: "persona-dashboard-a823f.firebasestorage.app",
+  messagingSenderId: "690343381511",
+  appId: "1:690343381511:web:75e68a529dce308d56f8a2"
 };
 
 /** 読み込む Firebase JavaScript SDK のバージョン（https://www.gstatic.com/firebasejs/ から読み込みます） */
