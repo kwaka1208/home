@@ -945,6 +945,19 @@
   }
   .wclock__row:last-child { border-bottom: 0; }
   .widget--worldclock .widget__body { padding-top: var(--space-1); } /* フォントの違いで溢れないよう余裕を持たせる */
+  /*
+   * 都市と都市の間に少しすき間を空ける（上から詰めて並べる）。
+   * 1 段に 2 都市、2 段に 6 都市が収まるよう、下の余白を少し詰めている
+   */
+  .widget--worldclock .widget__body {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: var(--space-1);
+  }
+  .widget--worldclock .wclock { flex: 1 0 auto; align-content: start; gap: var(--space-2); }
+  [data-density="compact"] .widget--worldclock .wclock { gap: var(--space-1); }
+  [data-density="compact"] .widget--worldclock .widget__body { padding-block: 2px; }
+  [data-layout="flow"] .widget--worldclock .widget__body { padding-bottom: var(--widget-padding); }
   .wclock__icon { grid-area: icon; font-size: 1.2rem; }
   .wclock__label { grid-area: label; font-weight: var(--font-weight-bold); font-size: var(--font-size-sm); }
   .wclock__diff { grid-area: diff; color: var(--color-text-muted); font-size: var(--font-size-xs); }
