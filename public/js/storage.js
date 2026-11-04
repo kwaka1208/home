@@ -131,34 +131,56 @@ export async function signOut() {
 
 /*
  * ログイン中の Google アカウントに、追加の権限（スコープ）をもらってアクセストークンを得る。
- * トークンは約 1 時間で切れるので、この端末の localStorage に有効期限つきで控えるだけにし、
- * Firestore（サーバー）には保存しない。ブラウザだけで動く仕組みのため、自動更新はできない。
+ * トークンの有効期限は Google 側で 1 時間と決まっていて、サーバーを持たないこの仕組みでは延ばせない。
+ * そのため、この端末の localStorage に有効期限つきで控えるだけにし（Firestore には保存しない）、
+ * 期限が近づいたら、画面を操作したときに取り直す（app.js の autoRenewGoogle）。
  */
-const TOKEN_LIFETIME_MS = 55 * 60 * 1000;
+const FALLBACK_LIFETIME_MS = 55 * 60 * 1000; // 残り時間を問い合わせられなかったとき
+const EXPIRY_MARGIN_MS = 60 * 1000; // 期限ぴったりで失敗しないよう、1 分早めに切れたことにする
 
 /** Google の API が使える状態か（Firebase を設定してログインしているか） */
 export function canUseGoogleApi() {
   return isConfigured && Boolean(currentUser);
 }
 
+function readConnection() {
+  const saved = readLocal("google-token");
+  return saved && currentUser && saved.uid === currentUser.uid ? saved : null;
+}
+
 /** 有効なトークンがあれば返す（必要なスコープがすべて含まれていること） */
 export function getGoogleToken(scopes) {
-  const saved = readLocal("google-token");
-  if (!saved || !currentUser || saved.uid !== currentUser.uid) return null;
-  if (Date.now() > saved.expiresAt) return null;
+  const saved = readConnection();
+  if (!saved?.token || Date.now() > saved.expiresAt) return null;
   if (!scopes.every((s) => saved.scopes.includes(s))) return null;
   return saved.token;
 }
 
-/** 有効なトークンの期限（ミリ秒）。なければ 0 */
-export function getGoogleTokenExpiry() {
-  const saved = readLocal("google-token");
-  return saved && currentUser && saved.uid === currentUser.uid ? saved.expiresAt : 0;
+/**
+ * 一度でも連携したことがあれば、そのときのスコープと期限を返す（期限切れでも返す）。
+ * 期限が近い・切れたときに、同じスコープで取り直すために使う。
+ */
+export function getGoogleConnection() {
+  const saved = readConnection();
+  return saved ? { scopes: saved.scopes, expiresAt: saved.expiresAt || 0 } : null;
 }
 
-/** トークンを捨てる（API が「期限切れ」と返したときなど） */
+/** トークンを使えなくする（API が「期限切れ」と返したときなど）。取り直せるよう、スコープは残す */
 export function forgetGoogleToken() {
-  writeLocal("google-token", null);
+  const saved = readConnection();
+  if (saved) writeLocal("google-token", { ...saved, token: null, expiresAt: 0 });
+}
+
+/** Google に問い合わせて、トークンの本当の残り時間（ミリ秒）を調べる */
+async function tokenLifetime(token) {
+  try {
+    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`);
+    if (!res.ok) return FALLBACK_LIFETIME_MS;
+    const seconds = Number((await res.json()).expires_in);
+    return Number.isFinite(seconds) && seconds > 120 ? seconds * 1000 - EXPIRY_MARGIN_MS : FALLBACK_LIFETIME_MS;
+  } catch {
+    return FALLBACK_LIFETIME_MS;
+  }
 }
 
 /**
@@ -184,7 +206,9 @@ export async function connectGoogle(scopes) {
   }
   const token = fb.authMod.GoogleAuthProvider.credentialFromResult(result)?.accessToken;
   if (!token) throw new StorageError("Google からアクセス権を受け取れませんでした");
-  writeLocal("google-token", { token, scopes: all, uid: currentUser.uid, expiresAt: Date.now() + TOKEN_LIFETIME_MS });
+  const startedAt = Date.now();
+  const lifetime = await tokenLifetime(token);
+  writeLocal("google-token", { token, scopes: all, uid: currentUser.uid, expiresAt: startedAt + lifetime });
   return token;
 }
 
