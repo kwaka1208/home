@@ -7,7 +7,7 @@ Google アカウントでログインした本人だけが見られます。
 - リンク集・メモ・時計・Web 検索・埋め込み（Google カレンダーなど）の 5 種類のウィジェット
 - 編集内容はサーバー（Cloudflare KV）に自動保存されるので、PC でもスマホでも同じ画面
 - 見た目は CSS 変数（デザイントークン）で丸ごと着せ替え可能
-- このリポジトリを**フォークすれば、誰でも自分用のダッシュボードを無料で持てます**
+- このリポジトリは**テンプレート**です。コピーして自分のリポジトリを作れば、誰でも自分用のダッシュボードを無料で持てます
 
 ## しくみ
 
@@ -15,7 +15,7 @@ Google アカウントでログインした本人だけが見られます。
 ブラウザ ──▶ Cloudflare Access ──▶ Cloudflare Workers ──▶ Workers KV
             （Google でログイン）   （画面の配信と保存 API）   （ダッシュボードのデータ）
                                          ▲
-GitHub（このリポジトリのフォーク）─────────┘ push すると自動デプロイ
+GitHub（テンプレートから作ったあなたのリポジトリ）─┘ push すると自動デプロイ
 ```
 
 | 役割 | 使うもの | 費用 |
@@ -27,8 +27,7 @@ GitHub（このリポジトリのフォーク）─────────┘ p
 
 ### リンクの中身はリポジトリに置きません
 
-公開リポジトリをフォークすると、フォーク先も公開リポジトリになります。
-そのため、**あなたが登録したリンクやメモは GitHub には一切保存されず**、Cloudflare KV に
+**あなたが登録したリンクやメモは GitHub には一切保存されず**、Cloudflare KV に
 ログインしたメールアドレスごとに保存されます。リポジトリに入っているのは画面のプログラムと、
 初回表示用のサンプル（`public/default-dashboard.json`）だけです。
 
@@ -49,13 +48,18 @@ GitHub（このリポジトリのフォーク）─────────┘ p
 > Cloudflare と Google Cloud の管理画面は、ときどきメニュー名が変わります。見当たらないときは、
 > 各手順に付けた公式ドキュメントのリンクを確認してください。
 
-### 1. リポジトリをフォークする
+### 1. テンプレートから自分のリポジトリを作る
 
-1. このリポジトリの右上にある **Fork** を押します。
-2. 自分のアカウントにコピーができます（例：`your-name/personal-dashboard`）。
+1. このリポジトリの右上にある **Use this template → Create a new repository** を押します。
+2. Owner に自分のアカウント、Repository name に好きな名前（例：`personal-dashboard`）を入れます。
+3. 公開範囲は **Public** と **Private** のどちらでも動きます。
+   壁紙などの見た目の設定も人に見せたくなければ **Private** がおすすめです。
+4. **Create repository** を押すと、自分のアカウントにコピーができます。
 
-フォーク後にファイルを書き換える必要はありません（見た目を変えたいときは後述の
+作ったリポジトリのファイルを書き換える必要はありません（見た目を変えたいときは後述の
 「見た目をカスタマイズする」を参照）。
+
+> フォーク（**Fork**）でも同じように動きますが、公開リポジトリのフォークは非公開にできません。
 
 ### 2. Cloudflare Zero Trust を有効にする
 
@@ -97,7 +101,9 @@ GitHub（このリポジトリのフォーク）─────────┘ p
 
 1. Cloudflare ダッシュボードで **Workers & Pages → Create** を開きます。
 2. **Import a repository**（Git リポジトリを連携）を選び、GitHub と接続して、
-   手順 1 でフォークしたリポジトリを選びます。
+   手順 1 で作ったリポジトリを選びます。
+   Private にした場合は、GitHub と接続するときに表示される画面で、
+   Cloudflare にそのリポジトリへのアクセスを許可してください。
 3. 設定はそのままで構いません。
    - プロジェクト名：`personal-dashboard`（`wrangler.jsonc` の `name` と同じにします）
    - ビルドコマンド：空欄
@@ -369,15 +375,39 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 ### 初期レイアウトを変える
 
 ログインして**初めて**開いたときのレイアウトは `public/default-dashboard.json` です。
-フォーク先は公開リポジトリなので、**人に見られて困るリンクは書かないでください**
+リポジトリを Public にしている場合は、**人に見られて困るリンクは書かないでください**
 （自分のリンクは画面から追加すれば KV に保存され、公開されません）。
 
 ---
 
 ## 本家の更新を取り込む
 
-フォークした GitHub のページで **Sync fork → Update branch** を押すと、本家の更新を取り込めます。
-Cloudflare が自動で再デプロイします。データ（KV）と環境変数はそのまま残ります。
+テンプレートから作ったリポジトリは本家と履歴がつながっていないため、フォークのような
+「Sync fork」ボタンはありません。更新を取り込みたいときは、手元に clone したリポジトリで次を実行します。
+
+最初の 1 回だけ、本家を `upstream` という名前で登録します。
+
+```bash
+git remote add upstream https://github.com/kwaka1208/personal-dashboard.git
+```
+
+本家の最新を取ってきます。
+
+```bash
+git fetch upstream
+```
+
+本家の `main` を取り込みます。
+
+```bash
+git merge upstream/main --allow-unrelated-histories
+```
+
+2 回目以降は `--allow-unrelated-histories` は不要です（`git fetch upstream` と `git merge upstream/main` だけ）。
+
+最初の取り込みでは、あなたが変更したファイルで衝突（コンフリクト）が出ることがあります。
+衝突したファイルを開いて残したい内容に直し、`git add` してから `git commit` してください。
+そのあと GitHub に push すると、Cloudflare が自動で再デプロイします。データ（KV）と環境変数はそのまま残ります。
 
 カスタマイズを `custom.css` と `themes.css` への追記に留めておくと、衝突しにくくなります。
 
@@ -439,9 +469,27 @@ wrangler.jsonc              Cloudflare Workers の設定
 | 「Cloudflare Access のトークンがありません」 | 手順 5 の Access が `workers.dev` の URL にかかっているか |
 | 「このアカウントには許可がありません」 | `ALLOWED_EMAILS` にログインしたアドレスが入っているか |
 | Google のログインで「アクセスをブロック」と出る | Google の OAuth 同意画面のテストユーザーに自分を追加したか |
+| Google のログインで「エラー 401: deleted_client」（The OAuth client was deleted）と出る | 下の「deleted_client エラーが出るとき」を参照 |
 | 「サーバーに保存できないため、このブラウザにだけ保存しています」 | `index.html` を直接開いている、または API に届いていない |
 | しばらく放置したら保存できない | Access のログインの期限切れです。ページを再読み込みしてください |
 | デプロイで KV の作成に失敗する | **Workers & Pages → KV** でネームスペースを作り、`wrangler.jsonc` の `kv_namespaces` に `"id": "<作った ID>"` を追記してください |
+
+### deleted_client エラーが出るとき
+
+手順 3 の **Test** やログインで「アクセスをブロック: 認証エラーです」「エラー 401: deleted_client」と出る場合は、
+Cloudflare に登録したクライアント ID の OAuth クライアントが、Google Cloud 側に存在しない（削除済み）状態です。
+クライアントを作り直す前の古い ID が残っている、別のプロジェクトのクライアントを使っている、などで起こります。
+
+1. [Google Cloud Console](https://console.cloud.google.com/) の上部で、手順 3 で使ったプロジェクトが選ばれているか確認します。
+2. **API とサービス → 認証情報**（または **Google Auth Platform → クライアント**）に、「ウェブ アプリケーション」のクライアントがあるか確認します。
+3. **Zero Trust → Integrations → Identity providers → Google → Edit** の **App ID** が、そのクライアント ID と完全に同じか比べます。
+4. 違っていれば、正しいクライアント ID と、同じクライアントのシークレットを登録し直して保存します。
+   クライアントが見つからなければ、手順 3 の「Google Cloud 側」をやり直して新しく作ります
+   （削除から 30 日以内なら、認証情報の画面から復元もできます）。
+5. もう一度 **Test** を押します。作り直した直後は、反映に数分かかることがあります。
+
+> クライアント シークレットを全文表示できるのは、作成した直後だけです。控え忘れたときは、
+> そのクライアントの画面で新しいシークレットを追加し、それを Cloudflare に登録してください。
 
 ## ライセンス
 
