@@ -11,6 +11,8 @@ Google アカウントでログインした本人だけが、中身を見たり�
 - 画面のレイアウトはドラッグ＆ドロップで自由に並べ替え
 - リンク集・ToDo・写真・Google カレンダー・Gmail・天気・タイマー（ポモドーロ）・世界時計・習慣トラッカー・GitHub・メモ（Markdown）・時計・Web 検索・埋め込み（YouTube など）の 14 種類のウィジェット
 - ブラウザのアドレスバーから URL をドラッグ＆ドロップするだけでリンクを追加
+- ウィジェットの大きさも、右下の角をドラッグしてマス目単位で変更
+- 自分で作ったウィジェットを **アドオン** として追加できる（本体のファイルは書き換えない）
 - 編集内容は Firebase（Cloud Firestore）に自動保存されるので、PC でもスマホでも同じ画面
 - 見た目はテーマで切り替え、CSS 変数（デザイントークン）で丸ごと着せ替えも可能
 - このリポジトリは**テンプレート**です。コピーして自分のリポジトリを作れば、誰でも自分用のダッシュボードを無料で持てます
@@ -31,6 +33,13 @@ Google アカウントでログインした本人だけが、中身を見たり�
 
 - いちばん簡単なのは、`public/css/custom.css` に CSS 変数（例：`--color-accent`）を書いて上書きする方法です。
 - 設定画面で選べるテーマを増やす方法、部品ごとのクラス名の一覧、初回表示のレイアウト（`public/default-dashboard.json`）の変え方も DESIGN.md にあります。
+
+---
+
+## アドオン（自作ウィジェット）
+
+自分で作ったウィジェットを **アドオン** として追加できます。`public/addons/` にファイルを置いて `public/addons/index.js` で読み込むだけで、本体のファイルは書き換えません。
+作り方と見本（カウントダウン）は **[WIDGET.md](WIDGET.md)** にまとめています。
 
 ---
 
@@ -274,7 +283,7 @@ GitHub に push すると自動で公開し直されます。Firestore のデー
 本家で `firestore.rules` が変わったときは、Firebase コンソールのルールにも反映してください
 （自分のメールアドレスの部分は残します）。
 
-カスタマイズを `custom.css` と `themes.css` への追記に留めておくと、衝突しにくくなります。
+カスタマイズを `custom.css` と `themes.css` への追記、自作ウィジェットを `public/addons/`（アドオン）に留めておくと、衝突しにくくなります。
 
 ---
 
@@ -327,12 +336,16 @@ public/                      GitHub Pages で公開されるファイル
   js/services.js             天気（Open-Meteo）・GitHub の API の呼び出し
   js/firebase-config.js      あなたの Firebase の設定値
   js/config.js               テーマ一覧などの設定
+  js/addon-api.js            アドオンを登録するための registerWidget()
+  addons/index.js            使うアドオンの一覧（本家では空。WIDGET.md 参照）
+  addons/countdown.js        アドオンの見本（カウントダウン）
   vendor/Sortable.min.js     並べ替えライブラリ SortableJS（MIT）
   vendor/marked.umd.js       Markdown の変換ライブラリ marked（MIT）
   vendor/purify.min.js       危険な HTML を取り除くライブラリ DOMPurify（Apache-2.0 / MPL-2.0）
 README.md                    セットアップ（このファイル）
 USAGE.md                     使い方（操作方法・ウィジェットごとの説明）
 DESIGN.md                    見た目のカスタマイズ（CSS 変数・クラス名・テーマの作り方）
+WIDGET.md                    アドオン（自作ウィジェット）の作り方
 firestore.rules              Firestore のセキュリティルール（コンソールに貼り付ける見本）
 firebase.json                エミュレーター用の設定
 .github/workflows/pages.yml  public/ を GitHub Pages に公開する設定
@@ -368,6 +381,8 @@ Firestore の `dashboards/{ユーザー ID}` ドキュメントに、次の形�
 | カレンダー・Gmail のウィジェットに「必要な権限が許可されていません」 | 手順 9 の 3 で権限（スコープ）を追加したか。追加後は「連携し直す」で、確認画面のチェックをすべて入れて許可する |
 | 「ポップアップがブロックされました」 | ブラウザでこのサイトのポップアップを許可して、もう一度ログイン |
 | 変更が反映されない | Actions タブで最新の「Deploy to GitHub Pages」が成功しているか確認し、キャッシュを無視して再読み込み（Mac は ⌘⇧R、Windows は Ctrl+Shift+R）。GitHub Pages のファイルはブラウザに最大 10 分ほどキャッシュされます |
+| 画面の上に「アドオンを読み込めませんでした」「アドオン『〇〇』を組み込めませんでした」 | `public/addons/index.js` の `import` のファイル名が合っているか、アドオンのファイルに書き間違いがないか（Console に詳しいエラーが出ます）。[WIDGET.md](WIDGET.md) を参照 |
+| ウィジェットに「アドオン『〇〇』が見つかりません」 | そのアドオンを `public/addons/index.js` から外していないか。外してもデータは残っているので、戻せば元どおり表示されます |
 | GitHub から「Publicly leaked secret」の警告が届いた | 下の「GitHub から『Publicly leaked secret』の警告が届いたとき」を参照 |
 
 ### GitHub から「Publicly leaked secret」の警告が届いたとき
