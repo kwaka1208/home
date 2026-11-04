@@ -150,6 +150,8 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | `html[data-density="compact"]` | 表示密度「コンパクト」のとき |
 | `html[data-layout="flow"]` | ウィジェットの高さを「中身に合わせる」にしているとき（タイル表示のときは付かない） |
 | `html[data-editing]` | 編集モード中 |
+| `html[lang="ja"]`（`en` など） | 表示している言語 |
+| `#mode-toggle` | 右上のライト / ダークの切り替えボタン |
 
 ## テーマを増やす
 
@@ -173,6 +175,7 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
    ```
 
 2. `public/js/config.js` の `THEME_PRESETS` に `{ id: "sakura", label: "桜" }` を追加します。
+   `label` には表示する文字か、`public/js/locales/` の文言のキー（言語ごとに訳したいとき）を書きます。
 
 常にダークで表示したいテーマは、ブロックの中に `color-scheme: dark;` を書きます（「ターミナル」がこの例です）。
 

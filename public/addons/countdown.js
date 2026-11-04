@@ -8,26 +8,29 @@ import { registerWidget } from "../js/addon-api.js";
 
 registerWidget({
   type: "countdown",
-  name: "カウントダウン",
+  name: { ja: "カウントダウン", en: "Countdown" },
   defaultRows: 1,
 
   // 編集画面の設定欄。値は widget.date・widget.label に保存される
   fields: [
-    { name: "date", label: "日付", type: "date" },
-    { name: "label", label: "何の日か（任意。例：年末、締め切り）", placeholder: "年末" },
+    { name: "date", label: { ja: "日付", en: "Date" }, type: "date" },
+    { name: "label", label: { ja: "何の日か（任意。例：年末、締め切り）", en: "What day (optional, e.g. New Year, deadline)" }, placeholder: { ja: "年末", en: "New Year" } },
   ],
 
   // ウィジェットの中身を作って返す
-  render(widget, { h }) {
+  render(widget, { h, language }) {
     if (!widget.date) {
-      return h("p", { class: "widget__empty" }, "「編集」→ ✎ で日付を設定してください");
+      return h("p", { class: "widget__empty" },
+        language === "ja" ? "「編集」→ ✎ で日付を設定してください" : "Use \"Edit\" → ✎ to set a date");
     }
     const [y, m, d] = widget.date.split("-").map(Number);
     const today = new Date();
     const days = Math.round(
       (new Date(y, m - 1, d) - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000,
     );
-    const text = days > 0 ? `あと ${days} 日` : days === 0 ? "今日です" : `${-days} 日前`;
+    const text = language === "ja"
+      ? (days > 0 ? `あと ${days} 日` : days === 0 ? "今日です" : `${-days} 日前`)
+      : (days > 0 ? `${days} day${days === 1 ? "" : "s"} to go` : days === 0 ? "Today" : `${-days} day${days === -1 ? "" : "s"} ago`);
     return h("div", { class: "countdown" },
       h("span", { class: "countdown__days" }, text),
       h("span", { class: "countdown__label" }, widget.label || widget.date),
