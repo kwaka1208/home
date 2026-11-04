@@ -9,7 +9,7 @@
  *
  * 未設定のままだと「ローカルモード」で動き、データはこのブラウザにだけ保存されます。
  */
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyB2yBqGXkrxuqkfHL84RXc8vlc72yWhQMU",
   authDomain: "persona-dashboard-a823f.firebaseapp.com",
   projectId: "persona-dashboard-a823f",
