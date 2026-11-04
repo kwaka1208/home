@@ -76,6 +76,8 @@
           <option value="embed">埋め込み（YouTube・カレンダーなど）</option>
           <option value="todo">ToDo（カテゴリー別）</option>
           <option value="photo">写真（スライドショー）</option>
+          <option value="calendar">Google カレンダー（予定の一覧）</option>
+          <option value="mail">Gmail（未読の件数）</option>
         </select>
       </label>
 
@@ -138,6 +140,29 @@
       <label class="field" data-for-type="embed" id="embed-height-field">
         <span class="field__label">高さ（px。設定の「ウィジェットの高さ」が「中身に合わせる」のときに使います）</span>
         <input class="input" name="height" type="number" min="120" max="1600" step="10">
+      </label>
+
+      <label class="field" data-for-type="calendar">
+        <span class="field__label">表示する期間</span>
+        <select class="input" name="calendarDays">
+          <option value="1">今日だけ</option>
+          <option value="3">今日から 3 日</option>
+          <option value="7">今日から 1 週間</option>
+          <option value="14">今日から 2 週間</option>
+        </select>
+      </label>
+      <label class="checkbox" data-for-type="calendar">
+        <input type="checkbox" name="allCalendars"> Google カレンダーで表示中のカレンダーをすべて含める（オフにするとメインのカレンダーだけ）
+      </label>
+
+      <label class="field" data-for-type="mail">
+        <span class="field__label">数える未読</span>
+        <select class="input" name="mailLabel">
+          <option value="INBOX">受信トレイ</option>
+          <option value="CATEGORY_PERSONAL">メイン（受信トレイのタブ）</option>
+          <option value="IMPORTANT">重要</option>
+          <option value="STARRED">スター付き</option>
+        </select>
       </label>
 
       <label class="checkbox" data-for-type="note">

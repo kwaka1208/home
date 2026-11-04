@@ -29,6 +29,7 @@
 import { THEME_PRESETS, FAVICON_URL, SAVE_DELAY_MS } from "./config.js";
 import * as storage from "./storage.js";
 import { toYouTubeEmbed, toImageUrl } from "./embed.js";
+import { CALENDAR_SCOPE, GMAIL_SCOPE, fetchCalendarEvents, fetchGmailUnread } from "./google.js";
 
 const WIDGET_TYPES = {
   links: "リンク集",
@@ -38,11 +39,22 @@ const WIDGET_TYPES = {
   embed: "埋め込み",
   todo: "ToDo",
   photo: "写真",
+  calendar: "Google カレンダー",
+  mail: "Gmail",
 };
 const DEFAULT_TODO_CATEGORIES = ["仕事", "プライベート"];
 /** ウィジェットの高さ（段数）の選択肢と、種類ごとの初期値 */
 const ROW_OPTIONS = [1, 2, 3, 4];
-const DEFAULT_ROWS = { links: 2, note: 2, clock: 1, search: 1, embed: 2, todo: 3, photo: 2 };
+const DEFAULT_ROWS = { links: 2, note: 2, clock: 1, search: 1, embed: 2, todo: 3, photo: 2, calendar: 3, mail: 1 };
+/** Google の API を使うウィジェット */
+const GOOGLE_WIDGETS = ["calendar", "mail"];
+const CALENDAR_DAYS = [1, 3, 7, 14];
+const MAIL_LABELS = {
+  INBOX: { name: "受信トレイ", hash: "inbox" },
+  CATEGORY_PERSONAL: { name: "メイン", hash: "inbox" },
+  IMPORTANT: { name: "重要", hash: "imp" },
+  STARRED: { name: "スター付き", hash: "starred" },
+};
 /** 写真のスライドショーの切り替え間隔（秒）の選択肢。0 は切り替えない */
 const PHOTO_INTERVALS = [0, 5, 10, 30, 60, 300];
 
@@ -228,6 +240,13 @@ function normalizeWidget(w) {
       }));
     widget.fit = widget.fit === "contain" ? "contain" : "cover";
     widget.interval = PHOTO_INTERVALS.includes(Number(w.interval)) ? Number(w.interval) : 10;
+  }
+  if (widget.type === "calendar") {
+    widget.days = CALENDAR_DAYS.includes(Number(w.days)) ? Number(w.days) : 3;
+    widget.allCalendars = w.allCalendars !== false;
+  }
+  if (widget.type === "mail") {
+    widget.label = MAIL_LABELS[w.label] ? w.label : "INBOX";
   }
   return widget;
 }
@@ -442,7 +461,7 @@ function applySettings(settings = state.settings) {
 function render() {
   applySettings();
   destroySortables();
-  stopPhotoTimers();
+  stopWidgetTimers();
 
   renderTabs();
   const nodes = widgets().map(renderWidget);
@@ -461,6 +480,10 @@ function render() {
   setupSortables();
   applyFilter();
   updateClocks();
+  // カレンダー・メールは 1 分ごとに見直し、古くなっていたら読み込み直す
+  if (widgets().some((w) => GOOGLE_WIDGETS.includes(w.type))) {
+    widgetTimers.push(setInterval(refreshGoogleWidgets, 60 * 1000));
+  }
   if (focusAfterRender) {
     $(focusAfterRender)?.focus();
     focusAfterRender = null;
@@ -542,6 +565,8 @@ function renderWidgetBody(widget) {
     case "embed": return renderEmbed(widget);
     case "todo": return renderTodo(widget);
     case "photo": return renderPhoto(widget);
+    case "calendar": return renderCalendar(widget);
+    case "mail": return renderMail(widget);
     default: return null;
   }
 }
@@ -789,10 +814,10 @@ function renderEmbed(widget) {
 
 /** ウィジェットごとに表示中の写真の番号（保存しない表示状態） */
 const photoIndexes = new Map();
-const photoTimers = [];
+const widgetTimers = [];
 
-function stopPhotoTimers() {
-  while (photoTimers.length) clearInterval(photoTimers.pop());
+function stopWidgetTimers() {
+  while (widgetTimers.length) clearInterval(widgetTimers.pop());
 }
 
 function renderPhoto(widget) {
@@ -882,7 +907,7 @@ function renderPhoto(widget) {
       let hovering = false;
       frame.addEventListener("mouseenter", () => { hovering = true; });
       frame.addEventListener("mouseleave", () => { hovering = false; });
-      photoTimers.push(setInterval(() => {
+      widgetTimers.push(setInterval(() => {
         if (!hovering && !document.hidden && frame.isConnected) show(index + 1);
       }, widget.interval * 1000));
     }
@@ -927,6 +952,203 @@ function readDroppedImage(dataTransfer) {
   }
   const link = readDroppedLink(dataTransfer);
   return link ? toImageUrl(link.url) : null;
+}
+
+/* ================================================================== */
+/* Google カレンダー・Gmail                                              */
+/* ================================================================== */
+
+/** 取得した予定・件数の一時的な控え（保存しない）。widgetId → { key, data, error, fetchedAt, loading } */
+const googleCache = new Map();
+const GOOGLE_REFRESH_MS = 10 * 60 * 1000;
+let currentEmail = "";
+
+function scopesFor(type) {
+  return type === "calendar" ? [CALENDAR_SCOPE] : [GMAIL_SCOPE];
+}
+
+/** カレンダー・メールのウィジェットの中身を、それぞれ描き直す（読み込み直しの判定も行う） */
+function refreshGoogleWidgets() {
+  for (const widget of widgets()) {
+    if (GOOGLE_WIDGETS.includes(widget.type)) refreshWidgetBody(widget);
+  }
+}
+
+function refreshWidgetBody(widget) {
+  const body = el.dashboard.querySelector(`.widget[data-id="${CSS.escape(widget.id)}"] .widget__body`);
+  if (!body) return;
+  const content = renderWidgetBody(widget);
+  body.replaceChildren(...(content ? [content] : []));
+}
+
+/**
+ * 共通の流れ：未ログイン → 説明 / 連携前・期限切れ → 「連携」ボタン / 連携済み → 読み込んで表示
+ */
+function renderGoogleWidget(widget, { cacheKey, load, view }) {
+  const scopes = scopesFor(widget.type);
+  if (!storage.canUseGoogleApi()) {
+    return h("p", { class: "widget__empty" },
+      "Firebase を設定してログインすると使えます（README の「カレンダーとメールのウィジェット」を参照）");
+  }
+  const token = storage.getGoogleToken(scopes);
+  const entry = googleCache.get(widget.id);
+  if (!token) {
+    const expiredBefore = entry?.data;
+    return h("div", { class: "google-connect" },
+      h("p", { class: "widget__empty" }, expiredBefore
+        ? "Google との連携の有効期限（約 1 時間）が切れました。"
+        : widget.type === "calendar"
+          ? "Google カレンダーの予定を表示するには、読み取りの許可が必要です。"
+          : "Gmail の未読件数を表示するには、ラベルと件数の読み取りの許可が必要です（メールの本文や件名は読みません）。"),
+      h("button", {
+        type: "button",
+        class: "button button--primary",
+        onclick: async () => {
+          try {
+            const got = await storage.connectGoogle(scopes);
+            if (!got) return;
+            googleCache.delete(widget.id);
+            refreshGoogleWidgets();
+          } catch (err) {
+            showToast(err.message);
+          }
+        },
+      }, expiredBefore ? "連携し直す" : "Google と連携"),
+    );
+  }
+
+  const stale = !entry || entry.key !== cacheKey || Date.now() - entry.fetchedAt > GOOGLE_REFRESH_MS;
+  if (stale && !entry?.loading) loadGoogle(widget, token, cacheKey, load);
+  const current = googleCache.get(widget.id);
+
+  const updated = current?.fetchedAt
+    ? new Date(current.fetchedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
+    : "";
+  const toolbar = h("div", { class: "google-toolbar" },
+    h("span", { class: "google-toolbar__time" },
+      current?.loading ? "読み込み中…" : updated ? `${updated} 更新` : ""),
+    h("button", {
+      type: "button",
+      class: "button button--small button--ghost",
+      title: "最新の情報を読み込む",
+      "aria-label": "最新の情報を読み込む",
+      disabled: current?.loading,
+      onclick: () => {
+        const e = googleCache.get(widget.id);
+        if (e) e.fetchedAt = 0;
+        refreshWidgetBody(widget);
+      },
+    }, "↻"),
+  );
+
+  let content;
+  if (current?.data !== undefined && current?.key === cacheKey) content = view(current.data);
+  else if (current?.error) content = null;
+  else content = h("p", { class: "widget__empty" }, "読み込み中…");
+
+  return h("div", { class: "google-widget" },
+    toolbar,
+    current?.error ? h("p", { class: "google-error" }, current.error) : null,
+    content,
+  );
+}
+
+async function loadGoogle(widget, token, key, load) {
+  const entry = { ...(googleCache.get(widget.id) || {}), key, loading: true };
+  googleCache.set(widget.id, entry);
+  try {
+    entry.data = await load(token);
+    entry.error = null;
+  } catch (err) {
+    entry.error = err.message;
+    if (err.expired) storage.forgetGoogleToken();
+  }
+  entry.fetchedAt = Date.now();
+  entry.loading = false;
+  refreshWidgetBody(widget);
+}
+
+function renderCalendar(widget) {
+  return renderGoogleWidget(widget, {
+    cacheKey: `${widget.days}:${widget.allCalendars}`,
+    load: (token) => fetchCalendarEvents(token, { days: widget.days, allCalendars: widget.allCalendars }),
+    view: (events) => renderCalendarEvents(widget, events),
+  });
+}
+
+function renderCalendarEvents(widget, events) {
+  if (events.length === 0) {
+    return h("p", { class: "widget__empty" },
+      widget.days === 1 ? "今日はこの先の予定はありません" : `${widget.days} 日以内の予定はありません`);
+  }
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayKey = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const groups = new Map();
+  for (const ev of events) {
+    const start = ev.start < today ? today : ev.start; // 前日から続く予定は今日に表示
+    const key = dayKey(start);
+    if (!groups.has(key)) groups.set(key, { date: new Date(start.getFullYear(), start.getMonth(), start.getDate()), items: [] });
+    groups.get(key).items.push(ev);
+  }
+  const time = (d) => d.toLocaleTimeString("ja-JP", { hour: "numeric", minute: "2-digit" });
+  const label = (d) => {
+    const diff = Math.round((d - today) / 86400000);
+    const date = d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
+    return diff === 0 ? `今日 ${date}` : diff === 1 ? `明日 ${date}` : date;
+  };
+
+  return h("div", { class: "cal" },
+    ...[...groups.values()].map((g) => h("section", { class: "cal-day" },
+      h("h3", { class: "cal-day__label" }, label(g.date)),
+      h("ul", { class: "cal-events" },
+        ...g.items.map((ev) => {
+          const ongoing = !ev.allDay && ev.start <= now && now < ev.end;
+          const item = h("a", {
+            class: "cal-event__link",
+            href: ev.link || null,
+            target: "_blank",
+            rel: "noopener noreferrer",
+            title: [ev.title, ev.location, ev.calendar].filter(Boolean).join("\n"),
+          },
+            h("span", { class: "cal-event__time" }, ev.allDay ? "終日" : `${time(ev.start)}–${time(ev.end)}`),
+            h("span", { class: "cal-event__dot", "aria-hidden": "true" }),
+            h("span", { class: "cal-event__title" }, ev.title),
+          );
+          if (ev.color) item.style.setProperty("--event-color", ev.color);
+          return h("li", { class: `cal-event${ongoing ? " is-now" : ""}${ev.allDay ? " is-all-day" : ""}` },
+            item,
+            ev.meet ? h("a", {
+              class: "button button--small cal-event__meet",
+              href: ev.meet,
+              target: "_blank",
+              rel: "noopener noreferrer",
+              title: "Google Meet に参加",
+            }, "Meet") : null,
+          );
+        }),
+      ),
+    )),
+  );
+}
+
+function renderMail(widget) {
+  const label = MAIL_LABELS[widget.label] || MAIL_LABELS.INBOX;
+  return renderGoogleWidget(widget, {
+    cacheKey: widget.label,
+    load: (token) => fetchGmailUnread(token, widget.label),
+    view: (data) => h("a", {
+      class: "mail",
+      href: `https://mail.google.com/mail/?authuser=${encodeURIComponent(currentEmail)}#${label.hash}`,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      title: "Gmail を開く",
+    },
+      h("span", { class: "mail__count" }, String(data.unreadMessages)),
+      h("span", { class: "mail__label" }, `${label.name}の未読`),
+      h("span", { class: "mail__open" }, "Gmail を開く ↗"),
+    ),
+  });
 }
 
 /* ================================================================== */
@@ -1479,6 +1701,9 @@ function openWidgetDialog(widgetId) {
   f.timeZone.value = widget?.timeZone || "";
   f.photoFit.value = widget?.fit || "cover";
   f.noteMarkdown.checked = widget?.markdown !== false;
+  f.calendarDays.value = String(widget?.days || 3);
+  f.allCalendars.checked = widget?.allCalendars !== false;
+  f.mailLabel.value = widget?.label || "INBOX";
   f.photoInterval.value = String(widget?.interval ?? 10);
   el.widgetDelete.hidden = !widget;
   updateWidgetFormVisibility();
@@ -1526,6 +1751,12 @@ el.widgetDialog.addEventListener("close", () => {
   }
   if (widget.type === "clock") widget.timeZone = f.timeZone.value.trim();
   if (widget.type === "note") widget.markdown = f.noteMarkdown.checked;
+  if (widget.type === "calendar") {
+    const days = Number(f.calendarDays.value);
+    widget.days = CALENDAR_DAYS.includes(days) ? days : 3;
+    widget.allCalendars = f.allCalendars.checked;
+  }
+  if (widget.type === "mail") widget.label = MAIL_LABELS[f.mailLabel.value] ? f.mailLabel.value : "INBOX";
   if (widget.type === "photo") {
     widget.fit = f.photoFit.value === "contain" ? "contain" : "cover";
     const interval = Number(f.photoInterval.value);
@@ -1757,6 +1988,8 @@ function showSignedOut() {
 
 /** データを読み込んでダッシュボードを表示する */
 async function openDashboard(user) {
+  currentEmail = user?.email || "";
+  googleCache.clear();
   setStatus("読み込み中…");
   try {
     const result = await storage.load();

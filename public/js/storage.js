@@ -120,7 +120,71 @@ export async function signIn() {
 
 export async function signOut() {
   if (currentUser) writeLocal(`data:${currentUser.uid}`, null); // この端末に残した控えも消す
+  writeLocal("google-token", null);
   await fb.authMod.signOut(fb.auth);
+}
+
+/* ------------------------------------------------------------------ */
+/* Google の API（カレンダー・Gmail）を使うためのアクセストークン        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * ログイン中の Google アカウントに、追加の権限（スコープ）をもらってアクセストークンを得る。
+ * トークンは約 1 時間で切れるので、この端末の localStorage に有効期限つきで控えるだけにし、
+ * Firestore（サーバー）には保存しない。ブラウザだけで動く仕組みのため、自動更新はできない。
+ */
+const TOKEN_LIFETIME_MS = 55 * 60 * 1000;
+
+/** Google の API が使える状態か（Firebase を設定してログインしているか） */
+export function canUseGoogleApi() {
+  return isConfigured && Boolean(currentUser);
+}
+
+/** 有効なトークンがあれば返す（必要なスコープがすべて含まれていること） */
+export function getGoogleToken(scopes) {
+  const saved = readLocal("google-token");
+  if (!saved || !currentUser || saved.uid !== currentUser.uid) return null;
+  if (Date.now() > saved.expiresAt) return null;
+  if (!scopes.every((s) => saved.scopes.includes(s))) return null;
+  return saved.token;
+}
+
+/** 有効なトークンの期限（ミリ秒）。なければ 0 */
+export function getGoogleTokenExpiry() {
+  const saved = readLocal("google-token");
+  return saved && currentUser && saved.uid === currentUser.uid ? saved.expiresAt : 0;
+}
+
+/** トークンを捨てる（API が「期限切れ」と返したときなど） */
+export function forgetGoogleToken() {
+  writeLocal("google-token", null);
+}
+
+/**
+ * ポップアップで権限を確認してトークンを得る。ボタンのクリックから呼ぶこと
+ * （ブラウザはクリック以外で開いたポップアップをブロックする）。
+ */
+export async function connectGoogle(scopes) {
+  if (!canUseGoogleApi()) throw new StorageError("ログインしていません");
+  const previous = readLocal("google-token");
+  const all = [...new Set([...(previous?.uid === currentUser.uid ? previous.scopes : []), ...scopes])];
+  const provider = new fb.authMod.GoogleAuthProvider();
+  for (const scope of all) provider.addScope(scope);
+  provider.setCustomParameters({ login_hint: currentUser.email || "" });
+  let result;
+  try {
+    result = await fb.authMod.reauthenticateWithPopup(currentUser, provider);
+  } catch (err) {
+    if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") return null;
+    if (err?.code === "auth/user-mismatch") {
+      throw new StorageError("ダッシュボードにログインしているのと同じ Google アカウントを選んでください。");
+    }
+    throw new StorageError(describeError(err));
+  }
+  const token = fb.authMod.GoogleAuthProvider.credentialFromResult(result)?.accessToken;
+  if (!token) throw new StorageError("Google からアクセス権を受け取れませんでした");
+  writeLocal("google-token", { token, scopes: all, uid: currentUser.uid, expiresAt: Date.now() + TOKEN_LIFETIME_MS });
+  return token;
 }
 
 /* ------------------------------------------------------------------ */

@@ -620,6 +620,121 @@
     color: inherit;
   }
 
+  /* ---------- Google カレンダー・Gmail ---------- */
+  .google-connect {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-2);
+  }
+  .google-widget { display: grid; gap: var(--space-2); }
+  .google-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-1);
+    margin-top: calc(-1 * var(--space-2));
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+  }
+  .google-error {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--link-radius);
+    background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+    color: var(--color-danger);
+    font-size: var(--font-size-sm);
+  }
+
+  .cal { display: grid; gap: var(--space-3); }
+  .cal-day__label {
+    margin: 0 0 var(--space-1);
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold);
+  }
+  .cal-events {
+    display: grid;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .cal-event {
+    --event-color: var(--widget-accent);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .cal-event__link {
+    display: flex;
+    flex: 1;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--link-radius);
+    color: inherit;
+    text-decoration: none;
+  }
+  .cal-event__link:hover { background: var(--link-hover-bg); color: var(--link-hover-color); }
+  .cal-event__link > * { --event-color: inherit; }
+  .cal-event__time {
+    flex: none;
+    min-width: 6.5em;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+  .cal-event__dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--event-color, var(--widget-accent));
+    align-self: center;
+  }
+  .cal-event__title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cal-event.is-now .cal-event__link {
+    background: color-mix(in srgb, var(--widget-accent) 12%, transparent);
+    font-weight: var(--font-weight-bold);
+  }
+  .cal-event__meet { flex: none; }
+
+  /* メールは 1 段に収まるよう、更新ボタンを右上に重ね、件数とラベルを横に並べる */
+  .widget--mail .widget__body { position: relative; }
+  .widget--mail .google-toolbar {
+    position: absolute;
+    top: 0;
+    right: var(--widget-padding);
+    margin: 0;
+  }
+  .mail {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    align-items: end;
+    column-gap: var(--space-3);
+    color: inherit;
+    text-decoration: none;
+  }
+  .mail__count { grid-row: 1 / 3; }
+  .mail__label { align-self: end; }
+  .mail__open { align-self: start; }
+  .mail__count {
+    font-size: var(--font-size-clock);
+    font-weight: var(--clock-weight);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+    color: var(--widget-accent);
+  }
+  .mail__label { font-size: var(--font-size-sm); }
+  .mail__open { color: var(--color-text-muted); font-size: var(--font-size-xs); }
+  .mail:hover .mail__open { color: var(--color-accent); }
+
   /* ---------- 写真 ---------- */
   .widget--photo .widget__body {
     display: flex;
