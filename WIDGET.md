@@ -146,6 +146,8 @@ api.h("div", { class: "box", dataset: { id: "x" }, style: { color: "red" } }, �
 | `uid()` | 新しい id を作る（ウィジェットの中にリストを持つときなど） |
 | `$(セレクター, 親)` / `$$(セレクター, 親)` | 要素を 1 つ / すべて探す |
 | `settings` | 設定（テーマ・密度・リンクを新しいタブで開くか など）。読むだけにする |
+| `language` / `locale` | 今の言語（`"ja"` / `"en"` …）と、日付・時刻の表示に使うロケール（`"ja-JP"` / `"en-US"` …） |
+| `t(キー, 値)` / `localized(値)` | 本体の文言を取り出す / `{ ja, en }` から今の言語のものを選ぶ（下の「言語に対応する」） |
 | `editing` | 編集モード中なら `true` |
 
 **値を変えて保存する例**（押すたびに数が増えるボタン）：
@@ -210,6 +212,31 @@ css: `
 ```
 
 本体と同じ部品のクラスも使えます：`button`・`button--primary`・`button--small`・`input`・`widget__empty`（「まだ設定されていません」などの説明文）。
+
+### 言語に対応する
+
+画面は日本語と英語に対応しています（⚙ の「言語」）。アドオンも、名前や設定欄を言語ごとに書けます。
+文字列を書くところに `{ ja: "…", en: "…" }` を渡すと、今の言語のものが表示されます（ない言語は英語、英語もなければ日本語）。
+
+```js
+registerWidget({
+  type: "countdown",
+  name: { ja: "カウントダウン", en: "Countdown" },
+  fields: [
+    { name: "date", label: { ja: "日付", en: "Date" }, type: "date" },
+    { name: "label", label: { ja: "何の日か", en: "What day" }, placeholder: { ja: "年末", en: "New Year" } },
+  ],
+  render(widget, { h, language, localized }) {
+    const days = 10;
+    return h("p", {}, localized({ ja: `あと ${days} 日`, en: `${days} days to go` }));
+  },
+});
+```
+
+- 言語ごとに書けるのは `name`、設定欄の `label`・`placeholder`・`hint`、`select` の選択肢の `label` です。
+- `render` の中の文は、`api.language`（`"ja"` / `"en"`）で分けるか、`api.localized({ ja, en })` を使います。
+- 日付や時刻は `date.toLocaleDateString(api.locale)` のように、`api.locale` を渡すと言語に合います。
+- 言語を変えると、ウィジェットは描き直されます。
 
 ---
 

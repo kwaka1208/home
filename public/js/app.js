@@ -33,24 +33,26 @@ import { toYouTubeEmbed, toImageUrl } from "./embed.js";
 import { CALENDAR_SCOPE, GMAIL_SCOPE, fetchCalendarEvents, fetchGmailUnread } from "./google.js";
 import { GITHUB_LISTS, describeWeather, fetchGitHub, fetchWeather, geocode } from "./services.js";
 import { addons } from "./addon-api.js";
+import { LANGUAGES, applyI18n, language, locale, localized, setLanguage, t } from "./i18n.js";
 
+/** ウィジェットの種類 → 表示名のキー（locales/*.js）。アドオンの種類は installAddon() で足す */
 const WIDGET_TYPES = {
-  links: "リンク集",
-  note: "メモ",
-  clock: "時計",
-  search: "Web 検索",
-  embed: "埋め込み",
-  todo: "ToDo",
-  photo: "写真",
-  calendar: "Google カレンダー",
-  mail: "Gmail",
-  weather: "天気",
-  timer: "タイマー・ポモドーロ",
-  worldclock: "世界時計",
-  habit: "習慣トラッカー",
-  github: "GitHub",
+  links: "widget.links",
+  note: "widget.note",
+  clock: "widget.clock",
+  search: "widget.search",
+  embed: "widget.embed",
+  todo: "widget.todo",
+  photo: "widget.photo",
+  calendar: "widget.calendar",
+  mail: "widget.mail",
+  weather: "widget.weather",
+  timer: "widget.timer",
+  worldclock: "widget.worldclock",
+  habit: "widget.habit",
+  github: "widget.github",
 };
-const DEFAULT_TODO_CATEGORIES = ["仕事", "プライベート"];
+const DEFAULT_TODO_CATEGORIES = ["todo.category.work", "todo.category.private"]; // 文言のキー
 /** ウィジェットの高さ（段数）の選択肢と、種類ごとの初期値 */
 const ROW_OPTIONS = [1, 2, 3, 4];
 const DEFAULT_ROWS = {
@@ -63,10 +65,10 @@ const GOOGLE_WIDGETS = ["calendar", "mail"];
 const REMOTE_WIDGETS = ["calendar", "mail", "weather", "github"];
 const CALENDAR_DAYS = [1, 3, 7, 14];
 const MAIL_LABELS = {
-  INBOX: { name: "受信トレイ", hash: "inbox" },
-  CATEGORY_PERSONAL: { name: "メイン", hash: "inbox" },
-  IMPORTANT: { name: "重要", hash: "imp" },
-  STARRED: { name: "スター付き", hash: "starred" },
+  INBOX: { name: "mail.label.inbox", hash: "inbox" },
+  CATEGORY_PERSONAL: { name: "mail.label.personal", hash: "inbox" },
+  IMPORTANT: { name: "mail.label.important", hash: "imp" },
+  STARRED: { name: "mail.label.starred", hash: "starred" },
 };
 /** 写真のスライドショーの切り替え間隔（秒）の選択肢。0 は切り替えない */
 const PHOTO_INTERVALS = [0, 5, 10, 30, 60, 300];
@@ -110,6 +112,7 @@ function normalizeRows(value, type) {
   return Math.max(valid, minSizeOf(type).rows);
 }
 const DEFAULT_SETTINGS = {
+  language: "auto", // "auto"：ブラウザの言語に合わせる / "ja" / "en" …（i18n.js の LANGUAGES）
   mode: "auto",
   preset: "",
   density: "normal",
@@ -131,6 +134,7 @@ const el = {
   filter: $("#filter"),
   editToggle: $("#edit-toggle"),
   settingsOpen: $("#settings-open"),
+  modeToggle: $("#mode-toggle"),
   saveStatus: $("#save-status"),
   banner: $("#banner"),
   userEmail: $("#user-email"),
@@ -214,11 +218,19 @@ function isHexColor(value) {
   return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 }
 
+/**
+ * 言語ごとに書いた文字 { "ja": "…", "en": "…" } を、今の言語の文字にする。
+ * default-dashboard.json の見出しなどで使う（保存するときは選んだ言語の文字になる）
+ */
+function localText(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? localized(value) : value;
+}
+
 /** 読み込んだデータを補正する（古い形式や手で書いた JSON への備え） */
 function normalize(data) {
   const out = {
     version: 2,
-    title: typeof data?.title === "string" ? data.title : "Dashboard",
+    title: typeof localText(data?.title) === "string" ? localText(data.title) : "Dashboard",
     settings: { ...DEFAULT_SETTINGS, ...(data?.settings || {}) },
     pages: [],
   };
@@ -229,21 +241,23 @@ function normalize(data) {
   }
   if (!THEME_PRESETS.some((p) => p.id === out.settings.preset)) out.settings.preset = "";
   if (out.settings.layout !== "flow") out.settings.layout = "tile";
+  if (!LANGUAGES.some((l) => l.id === out.settings.language)) out.settings.language = "auto";
+  if (!["auto", "light", "dark"].includes(out.settings.mode)) out.settings.mode = "auto";
   delete out.settings.alignRows; // 旧バージョンの設定（layout に置き換え）
 
   // タブ。旧形式（widgets だけ）は「ホーム」タブ 1 つにまとめる
   const pages = Array.isArray(data?.pages) && data.pages.length
     ? data.pages
-    : [{ id: "home", name: "ホーム", widgets: data?.widgets }];
+    : [{ id: "home", name: t("tab.home"), widgets: data?.widgets }];
   for (const p of pages) {
     if (!p || typeof p !== "object") continue;
     out.pages.push({
       id: p.id ? String(p.id) : uid(),
-      name: typeof p.name === "string" && p.name.trim() ? p.name : "タブ",
+      name: typeof localText(p.name) === "string" && localText(p.name).trim() ? localText(p.name) : t("tab.untitled"),
       widgets: (Array.isArray(p.widgets) ? p.widgets : []).map(normalizeWidget).filter(Boolean),
     });
   }
-  if (out.pages.length === 0) out.pages.push({ id: uid(), name: "ホーム", widgets: [] });
+  if (out.pages.length === 0) out.pages.push({ id: uid(), name: t("tab.home"), widgets: [] });
   return out;
 }
 
@@ -254,7 +268,7 @@ function normalizeWidget(w) {
   const widget = {
     ...w,
     id: w.id ? String(w.id) : uid(),
-    title: typeof w.title === "string" ? w.title : "",
+    title: typeof localText(w.title) === "string" ? localText(w.title) : "",
     size: clampSize(w.size, w.type),
     rows: normalizeRows(w.rows, w.type),
   };
@@ -262,7 +276,7 @@ function normalizeWidget(w) {
     widget.view = widget.view === "grid" ? "grid" : "list";
     widget.items = (Array.isArray(w.items) ? w.items : [])
       .filter((item) => item && safeUrl(item.url))
-      .map((item) => ({ ...item, id: item.id ? String(item.id) : uid() }));
+      .map((item) => ({ ...item, title: localText(item.title), id: item.id ? String(item.id) : uid() }));
   }
   if (widget.type === "todo") {
     widget.categories = (Array.isArray(w.categories) ? w.categories : [])
@@ -348,11 +362,11 @@ function renderTabs() {
     el.tabs.replaceChildren();
     return;
   }
-  const list = h("div", { class: "tabs__list", role: "tablist", "aria-label": "タブ" });
+  const list = h("div", { class: "tabs__list", role: "tablist", "aria-label": t("tab.untitled") });
   for (const p of state.pages) {
     const selected = p.id === page().id;
     const item = h("div", { class: "tab-item", dataset: { pageId: p.id } },
-      h("span", { class: "tab-item__handle", title: "ドラッグでタブを並べ替え", "aria-hidden": "true" }, "⠿"),
+      h("span", { class: "tab-item__handle", title: t("tab.dragHandle"), "aria-hidden": "true" }, "⠿"),
       h("button", {
         type: "button",
         class: "tab",
@@ -366,22 +380,22 @@ function renderTabs() {
         h("button", {
           type: "button",
           class: "button button--small button--ghost",
-          title: "名前を変える",
-          "aria-label": `タブ「${p.name}」の名前を変える`,
+          title: t("common.rename"),
+          "aria-label": t("tab.renameAria", { name: p.name }),
           onclick: () => renamePage(p),
         }, "✎"),
         h("button", {
           type: "button",
           class: "button button--small button--ghost",
-          title: "タブを複製",
-          "aria-label": `タブ「${p.name}」を複製`,
+          title: t("tab.duplicate"),
+          "aria-label": t("tab.duplicateAria", { name: p.name }),
           onclick: () => duplicatePage(p),
         }, "⧉"),
         state.pages.length > 1 ? h("button", {
           type: "button",
           class: "button button--small button--ghost button--danger",
-          title: "タブを削除",
-          "aria-label": `タブ「${p.name}」を削除`,
+          title: t("tab.delete"),
+          "aria-label": t("tab.deleteAria", { name: p.name }),
           onclick: () => deletePage(p),
         }, "×") : null,
       ),
@@ -391,7 +405,7 @@ function renderTabs() {
   // 「＋ タブを追加」は、いちばん右のタブのすぐ右に置く
   el.tabs.replaceChildren(list);
   if (editing) {
-    el.tabs.append(h("button", { type: "button", class: "tabs__add", onclick: addPage }, "＋ タブを追加"));
+    el.tabs.append(h("button", { type: "button", class: "tabs__add", onclick: addPage }, t("tab.add")));
   }
 }
 
@@ -402,8 +416,8 @@ function renderTabs() {
  */
 function duplicatePage(p) {
   const names = new Set(state.pages.map((x) => x.name));
-  let name = `${p.name} のコピー`;
-  for (let n = 2; names.has(name); n += 1) name = `${p.name} のコピー ${n}`;
+  let name = t("tab.copyName", { name: p.name });
+  for (let n = 2; names.has(name); n += 1) name = t("tab.copyNameN", { name: p.name, n });
   const copy = {
     id: uid(),
     name,
@@ -412,7 +426,7 @@ function duplicatePage(p) {
   state.pages.splice(state.pages.findIndex((x) => x.id === p.id) + 1, 0, copy);
   scheduleSave();
   switchPage(copy.id);
-  showToast(`タブ「${p.name}」を複製しました`);
+  showToast(t("tab.duplicated", { name: p.name }));
 }
 
 /** 矢印キーでタブを移動（WAI-ARIA のタブの操作） */
@@ -430,7 +444,7 @@ function moveTabFocus(event, id) {
 }
 
 async function addPage() {
-  const name = await askText({ title: "タブを追加", label: "タブの名前", value: "" });
+  const name = await askText({ title: t("tab.addTitle"), label: t("tab.nameLabel"), value: "" });
   if (!name) return;
   const p = { id: uid(), name, widgets: [] };
   state.pages.push(p);
@@ -439,7 +453,7 @@ async function addPage() {
 }
 
 async function renamePage(p) {
-  const name = await askText({ title: "タブの名前を変える", label: "タブの名前", value: p.name });
+  const name = await askText({ title: t("tab.renameTitle"), label: t("tab.nameLabel"), value: p.name });
   if (!name) return;
   p.name = name;
   commit();
@@ -448,8 +462,8 @@ async function renamePage(p) {
 function deletePage(p) {
   if (state.pages.length <= 1) return;
   const count = p.widgets.length;
-  const extra = count ? `\n（このタブのウィジェット ${count} 個も消えます）` : "";
-  if (!confirm(`タブ「${p.name}」を削除しますか？${extra}`)) return;
+  const extra = count ? t("tab.deleteConfirmWidgets", { n: count }) : "";
+  if (!confirm(t("tab.deleteConfirm", { name: p.name }) + extra)) return;
   state.pages = state.pages.filter((x) => x.id !== p.id);
   if (activePageId === p.id) {
     activePageId = state.pages[0].id;
@@ -483,7 +497,7 @@ function showBanner(message, kind = "error") {
 }
 
 function scheduleSave() {
-  setStatus("保存待ち…");
+  setStatus(t("status.pending"));
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveNow, SAVE_DELAY_MS);
 }
@@ -492,12 +506,12 @@ async function saveNow() {
   clearTimeout(saveTimer);
   saveTimer = null;
   if (!state) return;
-  setStatus("保存中…");
+  setStatus(t("status.saving"));
   try {
     await storage.save(state, storageMode);
-    setStatus(storageMode === "remote" ? "保存しました" : "このブラウザに保存しました");
+    setStatus(storageMode === "remote" ? t("status.saved") : t("status.savedLocal"));
   } catch (err) {
-    setStatus("保存できませんでした", "error");
+    setStatus(t("status.failed"), "error");
     showBanner(err.message);
   }
 }
@@ -521,6 +535,7 @@ window.addEventListener("beforeunload", (event) => {
 
 function applySettings(settings = state.settings) {
   const { mode, preset, density, layout } = settings;
+  if (setLanguage(settings.language)) onLanguageChanged();
   if (layout === "flow") el.root.dataset.layout = "flow";
   else delete el.root.dataset.layout;
   if (mode === "light" || mode === "dark") el.root.dataset.mode = mode;
@@ -533,7 +548,59 @@ function applySettings(settings = state.settings) {
     el.title.textContent = state.title || "Dashboard";
     document.title = state.title || "Dashboard";
   }
+  updateModeToggle(settings);
 }
+
+/** 言語が変わったとき：HTML に書いた文言・テーマの見本・アドオンの欄を、新しい言語で作り直す */
+function onLanguageChanged() {
+  applyI18n();
+  renderThemePicker();
+  renderAddonForm();
+  if (state) $(".button__label", el.editToggle).textContent = editing ? t("common.done") : t("common.edit");
+}
+
+/* ------------------------------------------------------------------ */
+/* ライト / ダークの切り替え（ヘッダーのボタンと D キー）                    */
+/* ------------------------------------------------------------------ */
+
+const darkQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+
+/** 今の見た目がダークか（「OS に合わせる」のときは OS の設定、常にダークのテーマはダーク） */
+function isDark(settings) {
+  if (settings.preset === "terminal") return true;
+  if (settings.mode === "dark" || settings.mode === "light") return settings.mode === "dark";
+  return Boolean(darkQuery?.matches);
+}
+
+/** 画面の外（ログイン前）でも使えるよう、今の設定を返す */
+function currentSettings() {
+  return state ? state.settings : { ...DEFAULT_SETTINGS, ...(storage.readAppearance() || {}) };
+}
+
+function updateModeToggle(settings = currentSettings()) {
+  const dark = isDark(settings);
+  el.modeToggle.textContent = dark ? "☀" : "☾";
+  const label = dark ? t("header.toLight") : t("header.toDark");
+  el.modeToggle.title = label;
+  el.modeToggle.setAttribute("aria-label", label);
+}
+
+function toggleMode() {
+  const settings = currentSettings();
+  const mode = isDark(settings) ? "light" : "dark";
+  if (state) {
+    state.settings.mode = mode;
+    applySettings();
+    commit({ rerender: false });
+  } else {
+    const next = { ...settings, mode };
+    storage.writeAppearance(next);
+    applySettings(next);
+  }
+}
+
+el.modeToggle.addEventListener("click", toggleMode);
+darkQuery?.addEventListener?.("change", () => updateModeToggle());
 
 function render() {
   applySettings();
@@ -544,12 +611,12 @@ function render() {
   const nodes = widgets().map(renderWidget);
   if (editing) {
     nodes.push(
-      h("button", { type: "button", class: "widget-add", onclick: () => openWidgetDialog(null) }, "＋ ウィジェットを追加"),
+      h("button", { type: "button", class: "widget-add", onclick: () => openWidgetDialog(null) }, t("dashboard.addWidget")),
     );
   }
   if (widgets().length === 0 && !editing) {
     nodes.push(
-      h("p", { class: "widget__empty" }, "ウィジェットがありません。右上の「編集」から追加できます。"),
+      h("p", { class: "widget__empty" }, t("dashboard.empty")),
     );
   }
   el.dashboard.replaceChildren(...nodes);
@@ -584,8 +651,8 @@ function renderWidget(widget) {
       h("button", {
         type: "button",
         class: "button button--small button--ghost",
-        title: "リンクを追加",
-        "aria-label": "リンクを追加",
+        title: t("link.add"),
+        "aria-label": t("link.add"),
         onclick: () => openLinkDialog(widget.id, null),
       }, "＋"),
     );
@@ -595,8 +662,8 @@ function renderWidget(widget) {
       h("button", {
         type: "button",
         class: "button button--small button--ghost",
-        title: "カテゴリーを追加",
-        "aria-label": "カテゴリーを追加",
+        title: t("todo.addCategory"),
+        "aria-label": t("todo.addCategory"),
         onclick: () => addTodoCategory(widget),
       }, "＋"),
     );
@@ -606,8 +673,8 @@ function renderWidget(widget) {
       h("button", {
         type: "button",
         class: "button button--small button--ghost",
-        title: "習慣を追加",
-        "aria-label": "習慣を追加",
+        title: t("habit.add"),
+        "aria-label": t("habit.add"),
         onclick: () => addHabit(widget),
       }, "＋"),
     );
@@ -617,8 +684,8 @@ function renderWidget(widget) {
       h("button", {
         type: "button",
         class: "button button--small button--ghost",
-        title: "写真を追加",
-        "aria-label": "写真を追加",
+        title: t("photo.add"),
+        "aria-label": t("photo.add"),
         onclick: () => addPhotoByUrl(widget),
       }, "＋"),
     );
@@ -627,15 +694,15 @@ function renderWidget(widget) {
     h("button", {
       type: "button",
       class: "button button--small button--ghost",
-      title: "ウィジェットを編集",
-      "aria-label": "ウィジェットを編集",
+      title: t("widget.editTitle"),
+      "aria-label": t("widget.editTitle"),
       onclick: () => openWidgetDialog(widget.id),
     }, "✎"),
   );
 
   section.append(
     h("header", { class: "widget__header" },
-      h("span", { class: "widget__handle", title: "ドラッグで移動", "aria-hidden": "true" }, "⠿"),
+      h("span", { class: "widget__handle", title: t("widget.dragHandle"), "aria-hidden": "true" }, "⠿"),
       h("h2", { class: "widget__title" }, h("span", { class: "widget__title-text" }, widget.title || "")),
       HEADER_REFRESH_WIDGETS.includes(widget.type) ? renderHeaderRefresh(widget) : null,
       tools,
@@ -643,7 +710,7 @@ function renderWidget(widget) {
     h("div", { class: "widget__body" }, renderWidgetBody(widget)),
     h("span", {
       class: "widget__resize",
-      title: FIXED_ROWS[widget.type] ? "ドラッグで幅を変更" : "ドラッグで大きさを変更",
+      title: FIXED_ROWS[widget.type] ? t("widget.resizeWidth") : t("widget.resize"),
       "aria-hidden": "true",
       onpointerdown: (event) => startResize(event, widget, section),
     }),
@@ -700,7 +767,7 @@ function startResize(event, widget, section) {
   const show = () => {
     section.dataset.size = size;
     section.dataset.rows = String(rows);
-    badge.textContent = `${SIZE_NAMES[size]}（${m.spans[size]} 列）・${rows} 段${fixedRows ? "（固定）" : ""}`;
+    badge.textContent = t("widget.resizeBadge", { size: SIZE_NAMES[size], cols: m.spans[size], rows }) + (fixedRows ? t("widget.resizeFixed") : "");
   };
   show();
 
@@ -763,7 +830,7 @@ function renderLinks(widget) {
     list.append(renderLinkItem(widget, item));
   }
   if (widget.items.length === 0 && !editing) {
-    return h("p", { class: "widget__empty" }, "リンクがありません。ブラウザのアドレスバーから URL をここにドラッグすると追加できます");
+    return h("p", { class: "widget__empty" }, t("link.empty"));
   }
   return list;
 }
@@ -801,7 +868,7 @@ function renderLinkItem(widget, item) {
     h("button", {
       type: "button",
       class: "button button--small button--ghost link-item__edit",
-      "aria-label": `${title} を編集`,
+      "aria-label": t("link.editAria", { name: title }),
       onclick: () => openLinkDialog(widget.id, item.id),
     }, "✎"),
   );
@@ -868,10 +935,10 @@ const TASK_LINE = /^(\s*(?:[-*+]|\d+[.)])\s+)\[( |x|X)\]/gm;
 function renderNote(widget) {
   const area = h("textarea", {
     class: "note",
-    "aria-label": widget.title || "メモ",
+    "aria-label": widget.title || t("widget.note"),
     placeholder: widget.markdown === false
-      ? "ここにメモを書けます（自動保存）"
-      : "ここにメモを書けます（自動保存）\n# 見出し / - 箇条書き / - [ ] チェック / **太字** / [リンク](https://…)",
+      ? t("note.placeholder")
+      : t("note.placeholderMarkdown"),
   });
   area.value = widget.text || "";
   area.addEventListener("input", () => {
@@ -884,8 +951,8 @@ function renderNote(widget) {
   const view = h("div", {
     class: "note note--view markdown",
     tabindex: "0",
-    title: "クリックして編集",
-    "aria-label": `${widget.title || "メモ"}（Enter で編集）`,
+    title: t("note.clickToEdit"),
+    "aria-label": t("note.viewAria", { name: widget.title || t("widget.note") }),
   });
   const box = h("div", { class: "note-box" }, view, area);
 
@@ -894,7 +961,7 @@ function renderNote(widget) {
     const html = text.trim() ? markdownToHtml(text) : null;
     if (text.trim() && html === null) return; // ライブラリが読めないときは編集欄のまま
     if (!text.trim()) {
-      view.replaceChildren(h("p", { class: "note__placeholder" }, "クリックしてメモを書く（Markdown が使えます）"));
+      view.replaceChildren(h("p", { class: "note__placeholder" }, t("note.empty")));
     } else {
       view.innerHTML = html;
       for (const a of view.querySelectorAll("a[href]")) {
@@ -955,14 +1022,14 @@ function updateClocks() {
   for (const node of $$(".clock", el.dashboard)) {
     const timeZone = node.dataset.timeZone || undefined;
     try {
-      $(".clock__time", node).textContent = now.toLocaleTimeString("ja-JP", {
+      $(".clock__time", node).textContent = now.toLocaleTimeString(locale(), {
         timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit",
       });
-      $(".clock__date", node).textContent = now.toLocaleDateString("ja-JP", {
+      $(".clock__date", node).textContent = now.toLocaleDateString(locale(), {
         timeZone, year: "numeric", month: "long", day: "numeric", weekday: "short",
       });
     } catch {
-      $(".clock__date", node).textContent = `タイムゾーン「${timeZone}」が不正です`;
+      $(".clock__date", node).textContent = t("clock.invalidZone", { zone: timeZone });
     }
   }
   updateWorldClocks(now);
@@ -970,10 +1037,10 @@ function updateClocks() {
 }
 
 function renderSearch(widget) {
-  const input = h("input", { class: "input", type: "search", name: "q", placeholder: "検索", "aria-label": "Web 検索" });
+  const input = h("input", { class: "input", type: "search", name: "q", placeholder: t("search.placeholder"), "aria-label": t("widget.search") });
   const form = h("form", { class: "web-search" },
     input,
-    h("button", { class: "button button--primary", type: "submit" }, "検索"),
+    h("button", { class: "button button--primary", type: "submit" }, t("search.placeholder")),
   );
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -993,7 +1060,7 @@ function renderEmbed(widget) {
     return h("iframe", {
       class: `embed embed--video${youtube.vertical ? " embed--vertical" : ""}`,
       src: youtube.src,
-      title: widget.title || "YouTube 動画",
+      title: widget.title || t("embed.youtube"),
       loading: "lazy",
       // YouTube は参照元の情報がないと再生できない（エラー 153）ため、送る設定にする
       referrerpolicy: "strict-origin-when-cross-origin",
@@ -1005,12 +1072,12 @@ function renderEmbed(widget) {
   const url = safeUrl(widget.embedUrl || "");
   if (!url || !/^https:/.test(url)) {
     return h("p", { class: "widget__empty" },
-      "埋め込む URL（https://…）を設定してください。YouTube の URL もそのまま貼れます。編集中でなくても、URL をここにドラッグして設定できます");
+      t("embed.empty"));
   }
   const frame = h("iframe", {
     class: "embed",
     src: url,
-    title: widget.title || "埋め込み",
+    title: widget.title || t("widget.embed"),
     loading: "lazy",
     referrerpolicy: "no-referrer",
     sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",
@@ -1044,10 +1111,10 @@ function renderPhoto(widget) {
           h("button", {
             type: "button",
             class: "button button--small",
-            title: "キャプションを編集",
-            "aria-label": "キャプションを編集",
+            title: t("photo.captionEdit"),
+            "aria-label": t("photo.captionEdit"),
             onclick: async () => {
-              const caption = await askText({ title: "キャプション", label: "写真の説明（空欄で消す）", value: ph.caption, allowEmpty: true });
+              const caption = await askText({ title: t("photo.captionTitle"), label: t("photo.captionLabel"), value: ph.caption, allowEmpty: true });
               if (caption === null) return;
               ph.caption = caption;
               commit();
@@ -1056,8 +1123,8 @@ function renderPhoto(widget) {
           h("button", {
             type: "button",
             class: "button button--small button--danger",
-            title: "この写真を外す",
-            "aria-label": "この写真を外す",
+            title: t("photo.remove"),
+            "aria-label": t("photo.remove"),
             onclick: () => {
               widget.photos = widget.photos.filter((x) => x.id !== ph.id);
               commit();
@@ -1068,21 +1135,21 @@ function renderPhoto(widget) {
     );
     return h("div", { class: "photo-edit" },
       list,
-      h("p", { class: "widget__empty" }, "見出しの「＋」で画像の URL を追加。ドラッグで順番を変えられます"));
+      h("p", { class: "widget__empty" }, t("photo.editHint")));
   }
 
   if (photos.length === 0) {
     return h("p", { class: "widget__empty" },
-      "写真がありません。「編集」→ 見出しの「＋」で画像の URL を追加するか、ほかのタブの画像をここにドラッグしてください");
+      t("photo.empty"));
   }
 
   let index = Math.min(photoIndexes.get(widget.id) || 0, photos.length - 1);
   const img = h("img", { class: "photo__img", alt: "", referrerpolicy: "no-referrer", decoding: "async" });
   const caption = h("span", { class: "photo__caption" });
-  const error = h("span", { class: "photo__error", hidden: true }, "画像を読み込めませんでした");
+  const error = h("span", { class: "photo__error", hidden: true }, t("photo.loadError"));
   const dots = h("span", { class: "photo__dots", "aria-hidden": "true" },
     ...photos.map(() => h("span", { class: "photo__dot" })));
-  const link = h("a", { class: "photo__link", target: "_blank", rel: "noopener noreferrer", title: "元の画像を開く" }, img);
+  const link = h("a", { class: "photo__link", target: "_blank", rel: "noopener noreferrer", title: t("photo.openOriginal") }, img);
 
   const show = (i) => {
     index = (i + photos.length) % photos.length;
@@ -1091,7 +1158,7 @@ function renderPhoto(widget) {
     error.hidden = true;
     img.hidden = false;
     img.src = ph.url;
-    img.alt = ph.caption || `写真 ${index + 1}`;
+    img.alt = ph.caption || t("photo.alt", { n: index + 1 });
     link.href = ph.url;
     caption.textContent = ph.caption;
     caption.hidden = !ph.caption;
@@ -1104,14 +1171,14 @@ function renderPhoto(widget) {
   const frame = h("div", {
     class: `photo photo--${widget.fit}`,
     role: "group",
-    "aria-roledescription": "スライドショー",
-    "aria-label": widget.title || "写真",
+    "aria-roledescription": t("photo.slideshow"),
+    "aria-label": widget.title || t("widget.photo"),
   }, link, error, caption);
 
   if (photos.length > 1) {
     frame.append(
-      h("button", { type: "button", class: "photo__nav photo__nav--prev", "aria-label": "前の写真", onclick: () => show(index - 1) }, "‹"),
-      h("button", { type: "button", class: "photo__nav photo__nav--next", "aria-label": "次の写真", onclick: () => show(index + 1) }, "›"),
+      h("button", { type: "button", class: "photo__nav photo__nav--prev", "aria-label": t("photo.prev"), onclick: () => show(index - 1) }, "‹"),
+      h("button", { type: "button", class: "photo__nav photo__nav--next", "aria-label": t("photo.next"), onclick: () => show(index + 1) }, "›"),
       dots,
     );
     // 一定間隔で切り替え（マウスを乗せている間と、ページが隠れている間は止める）
@@ -1130,14 +1197,14 @@ function renderPhoto(widget) {
 
 async function addPhotoByUrl(widget) {
   const value = await askText({
-    title: "写真を追加",
-    label: "画像の URL（Google ドライブ・Dropbox の共有リンクも可）",
+    title: t("photo.add"),
+    label: t("photo.urlLabel"),
     value: "",
   });
   if (!value) return;
   const url = toImageUrl(value);
   if (!url) {
-    showToast("http:// か https:// で始まる URL を入力してください");
+    showToast(t("link.invalidUrl"));
     return;
   }
   addPhoto(widget, url);
@@ -1145,7 +1212,7 @@ async function addPhotoByUrl(widget) {
 
 function addPhoto(widget, url) {
   if (widget.photos.some((ph) => ph.url === url)) {
-    showToast("この写真はすでに追加されています");
+    showToast(t("photo.duplicate"));
     return false;
   }
   widget.photos.push({ id: uid(), url, caption: "" });
@@ -1201,7 +1268,7 @@ function renderGoogleWidget(widget, { cacheKey, load, view }) {
   const scopes = scopesFor(widget.type);
   if (!storage.canUseGoogleApi()) {
     return h("p", { class: "widget__empty" },
-      "Firebase を設定してログインすると使えます（README の「カレンダーとメールのウィジェット」を参照）");
+      t("google.needFirebase"));
   }
   const token = storage.getGoogleToken(scopes);
   const entry = googleCache.get(widget.id);
@@ -1222,22 +1289,22 @@ function renderGoogleWidget(widget, { cacheKey, load, view }) {
       return h("div", { class: `google-widget${compact ? " google-widget--compact" : ""}` },
         h("p", {
           class: "google-expired",
-          title: state.settings.autoRenewGoogle ? "画面をクリックすると自動で延長します" : null,
+          title: state.settings.autoRenewGoogle ? t("google.autoRenewHint") : null,
         },
           h("span", {}, compact || !state.settings.autoRenewGoogle
-            ? "連携の期限が切れました"
-            : "連携の期限が切れました（画面をクリックすると自動で延長します）"),
-          h("button", { type: "button", class: "button button--small", onclick: connect }, "連携し直す"),
+            ? t("google.expired")
+            : t("google.expiredAutoRenew")),
+          h("button", { type: "button", class: "button button--small", onclick: connect }, t("google.reconnect")),
         ),
         view(entry.data),
       );
     }
     return h("div", { class: "google-connect" },
       h("p", { class: "widget__empty" }, widget.type === "calendar"
-        ? "Google カレンダーの予定を表示するには、読み取りの許可が必要です。"
-        : "未読件数の表示には許可が必要です（本文・件名は読みません）"),
+        ? t("google.calendarPermission")
+        : t("google.mailPermission")),
       h("button", { type: "button", class: "button button--primary", onclick: connect },
-        storage.getGoogleConnection() ? "連携し直す" : "Google と連携"),
+        storage.getGoogleConnection() ? t("google.reconnect") : t("google.connect")),
     );
   }
 
@@ -1290,11 +1357,11 @@ const HEADER_REFRESH_WIDGETS = ["calendar", "mail"];
 /** 見出しの更新ボタンに出す説明（最後に読み込んだ時刻つき） */
 function refreshButtonTitle(widget) {
   const entry = googleCache.get(widget.id);
-  if (entry?.loading) return "読み込み中…";
+  if (entry?.loading) return t("common.loading");
   const time = entry?.fetchedAt
-    ? new Date(entry.fetchedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
+    ? new Date(entry.fetchedAt).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })
     : "";
-  return time ? `最新の情報を読み込む（${time} 更新）` : "最新の情報を読み込む";
+  return time ? t("common.refreshAt", { time }) : t("common.refresh");
 }
 
 /** 見出しの更新ボタンを出すか（Google のウィジェットは、連携中のときだけ） */
@@ -1341,17 +1408,17 @@ function renderRemote(widget, { cacheKey, load, view, refreshMs, onError }) {
   const current = googleCache.get(widget.id);
 
   const updated = current?.fetchedAt
-    ? new Date(current.fetchedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
+    ? new Date(current.fetchedAt).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })
     : "";
   // 見出しに更新ボタンを置くウィジェットは、更新時刻の行を出さずに中身を上に詰める
   const toolbar = HEADER_REFRESH_WIDGETS.includes(widget.type) ? null : h("div", { class: "google-toolbar" },
     h("span", { class: "google-toolbar__time" },
-      current?.loading ? "読み込み中…" : updated ? `${updated} 更新` : ""),
+      current?.loading ? t("common.loading") : updated ? t("common.updatedAt", { time: updated }) : ""),
     h("button", {
       type: "button",
       class: "button button--small button--ghost",
-      title: "最新の情報を読み込む",
-      "aria-label": "最新の情報を読み込む",
+      title: t("common.refresh"),
+      "aria-label": t("common.refresh"),
       disabled: current?.loading,
       onclick: () => {
         const e = googleCache.get(widget.id);
@@ -1364,7 +1431,7 @@ function renderRemote(widget, { cacheKey, load, view, refreshMs, onError }) {
   let content;
   if (current?.data !== undefined && current?.key === cacheKey) content = view(current.data);
   else if (current?.error) content = null;
-  else content = h("p", { class: "widget__empty" }, "読み込み中…");
+  else content = h("p", { class: "widget__empty" }, t("common.loading"));
 
   return h("div", { class: "google-widget" },
     toolbar,
@@ -1413,7 +1480,7 @@ function renderCalendar(widget) {
 function renderCalendarEvents(widget, events) {
   if (events.length === 0) {
     return h("p", { class: "widget__empty" },
-      widget.days === 1 ? "今日はこの先の予定はありません" : `${widget.days} 日以内の予定はありません`);
+      widget.days === 1 ? t("calendar.emptyToday") : t("calendar.emptyDays", { n: widget.days }));
   }
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -1425,11 +1492,12 @@ function renderCalendarEvents(widget, events) {
     if (!groups.has(key)) groups.set(key, { date: new Date(start.getFullYear(), start.getMonth(), start.getDate()), items: [] });
     groups.get(key).items.push(ev);
   }
-  const time = (d) => d.toLocaleTimeString("ja-JP", { hour: "numeric", minute: "2-digit" });
+  const time = (d) => d.toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
   const label = (d) => {
     const diff = Math.round((d - today) / 86400000);
-    const date = d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
-    return diff === 0 ? `今日 ${date}` : diff === 1 ? `明日 ${date}` : date;
+    const date = d.toLocaleDateString(locale(), { month: "numeric", day: "numeric", weekday: "short" });
+    return diff === 0 ? t("calendar.dayLabel", { day: t("common.today"), date })
+      : diff === 1 ? t("calendar.dayLabel", { day: t("common.tomorrow"), date }) : date;
   };
 
   return h("div", { class: "cal" },
@@ -1445,7 +1513,7 @@ function renderCalendarEvents(widget, events) {
             rel: "noopener noreferrer",
             title: [ev.title, ev.location, ev.calendar].filter(Boolean).join("\n"),
           },
-            h("span", { class: "cal-event__time" }, ev.allDay ? "終日" : `${time(ev.start)}–${time(ev.end)}`),
+            h("span", { class: "cal-event__time" }, ev.allDay ? t("calendar.allDay") : `${time(ev.start)}–${time(ev.end)}`),
             h("span", { class: "cal-event__dot", "aria-hidden": "true" }),
             h("span", { class: "cal-event__title" }, ev.title),
           );
@@ -1457,7 +1525,7 @@ function renderCalendarEvents(widget, events) {
               href: ev.meet,
               target: "_blank",
               rel: "noopener noreferrer",
-              title: "Google Meet に参加",
+              title: t("calendar.joinMeet"),
             }, "Meet") : null,
           );
         }),
@@ -1476,11 +1544,11 @@ function renderMail(widget) {
       href: `https://mail.google.com/mail/?authuser=${encodeURIComponent(currentEmail)}#${label.hash}`,
       target: "_blank",
       rel: "noopener noreferrer",
-      title: "Gmail を開く",
+      title: t("mail.open"),
     },
       h("span", { class: "mail__count" }, String(data.unreadMessages)),
-      h("span", { class: "mail__label" }, `${label.name}の未読`),
-      h("span", { class: "mail__open" }, "Gmail を開く ↗"),
+      h("span", { class: "mail__label" }, t("mail.unread", { label: t(label.name) })),
+      h("span", { class: "mail__open" }, t("mail.openArrow")),
     ),
   });
 }
@@ -1490,14 +1558,16 @@ function renderMail(widget) {
 /* ================================================================== */
 
 const WEATHER_REFRESH_MS = 30 * 60 * 1000;
+/** 「現在地を使う」で設定したときの place の値（保存データの目印。表示は t("weather.here")） */
+const HERE = "現在地";
 
 function renderWeather(widget) {
   if (!widget.place && widget.lat == null) {
-    return h("p", { class: "widget__empty" }, "「編集」→ ✎ で地域を設定してください（例：東京、大阪市、札幌）");
+    return h("p", { class: "widget__empty" }, t("weather.empty"));
   }
   return renderRemote(widget, {
     // 地名で調べた緯度・経度は読み込みの途中で決まるので、キーには含めない（「現在地」のときだけ含める）
-    cacheKey: widget.place === "現在地" ? `here:${widget.lat},${widget.lon}` : `place:${widget.place}`,
+    cacheKey: widget.place === HERE ? `here:${widget.lat},${widget.lon}` : `place:${widget.place}:${language()}`,
     refreshMs: WEATHER_REFRESH_MS,
     load: async () => {
       // 地名だけ設定されていて、緯度・経度がまだなら調べて控える
@@ -1516,17 +1586,17 @@ function renderWeatherView(widget, { current, daily }) {
   const now = describeWeather(current.code);
   const icon = !current.isDay && now.icon === "☀️" ? "🌙" : now.icon;
   const round = (n) => (n == null ? "–" : Math.round(n));
-  const weekday = (date, i) => i === 0 ? "今日" : i === 1 ? "明日"
-    : new Date(`${date}T00:00:00`).toLocaleDateString("ja-JP", { weekday: "short" });
+  const weekday = (date, i) => i === 0 ? t("common.today") : i === 1 ? t("common.tomorrow")
+    : new Date(`${date}T00:00:00`).toLocaleDateString(locale(), { weekday: "short" });
   return h("div", { class: "weather" },
     h("div", { class: "weather__now" },
       h("span", { class: "weather__icon", "aria-hidden": "true" }, icon),
       h("span", { class: "weather__temp" }, `${round(current.temp)}°`),
       h("span", { class: "weather__detail" },
-        h("span", { class: "weather__place" }, widget.placeLabel || widget.place || "現在地"),
-        h("span", {}, `${now.text}　最高 ${round(daily[0]?.max)}° / 最低 ${round(daily[0]?.min)}°`),
+        h("span", { class: "weather__place" }, widget.place === HERE || !widget.place ? t("weather.here") : widget.placeLabel || widget.place),
+        h("span", {}, t("weather.summary", { text: now.text, max: round(daily[0]?.max), min: round(daily[0]?.min) })),
         h("span", { class: "weather__sub" },
-          `体感 ${round(current.feels)}°・湿度 ${round(current.humidity)}%・風 ${round(current.wind)}m/s・降水 ${round(daily[0]?.rain)}%`),
+          t("weather.detail", { feels: round(current.feels), humidity: round(current.humidity), wind: round(current.wind), rain: round(daily[0]?.rain) })),
       ),
     ),
     h("ol", { class: "weather__days" },
@@ -1551,7 +1621,7 @@ function renderWeatherView(widget, { current, daily }) {
  * 動いているタイマーの状態は、この端末の localStorage にだけ保存する（ほかの端末とは共有しない）。
  * 終了時刻（endAt）で持つので、再読み込みしても続きから数える。
  */
-const TIMER_PHASES = { work: "作業", short: "休憩", long: "長い休憩", timer: "タイマー" };
+const TIMER_PHASES = { work: "timer.phase.work", short: "timer.phase.short", long: "timer.phase.long", timer: "timer.phase.timer" };
 
 function timerKey(widget) {
   return `personal-dashboard:timer:${widget.id}`;
@@ -1573,12 +1643,12 @@ function readTimer(widget) {
   return { phase: firstPhase, running: false, endAt: 0, remaining: phaseMinutes(widget, firstPhase) * 60000, count: 0 };
 }
 
-function writeTimer(widget, t) {
-  try { localStorage.setItem(timerKey(widget), JSON.stringify(t)); } catch { /* 使えない環境 */ }
+function writeTimer(widget, tm) {
+  try { localStorage.setItem(timerKey(widget), JSON.stringify(tm)); } catch { /* 使えない環境 */ }
 }
 
-function timerRemaining(t) {
-  return t.running ? Math.max(0, t.endAt - Date.now()) : t.remaining;
+function timerRemaining(tm) {
+  return tm.running ? Math.max(0, tm.endAt - Date.now()) : tm.remaining;
 }
 
 function formatDuration(ms) {
@@ -1589,8 +1659,8 @@ function formatDuration(ms) {
 }
 
 function renderTimer(widget) {
-  const t = readTimer(widget);
-  const running = t.running;
+  const tm = readTimer(widget);
+  const running = tm.running;
   const control = (label, aria, onclick, extra = "") => h("button", {
     type: "button", class: `button ${extra}`, "aria-label": aria, title: aria, onclick,
   }, label);
@@ -1613,24 +1683,24 @@ function renderTimer(widget) {
   };
   const skip = () => finishTimer(widget, { silent: true });
 
-  const total = phaseMinutes(widget, t.phase) * 60000;
-  return h("div", { class: `timer timer--${t.phase}${running ? " is-running" : ""}`, dataset: { widgetId: widget.id } },
+  const total = phaseMinutes(widget, tm.phase) * 60000;
+  return h("div", { class: `timer timer--${tm.phase}${running ? " is-running" : ""}`, dataset: { widgetId: widget.id } },
     h("div", { class: "timer__head" },
-      h("span", { class: "timer__phase" }, TIMER_PHASES[t.phase]),
-      widget.mode === "pomodoro" ? h("span", { class: "timer__count", title: "完了した作業の回数" },
+      h("span", { class: "timer__phase" }, t(TIMER_PHASES[tm.phase])),
+      widget.mode === "pomodoro" ? h("span", { class: "timer__count", title: t("timer.count") },
         ...Array.from({ length: widget.longEvery }, (_, i) =>
-          h("span", { class: `timer__dot${i < t.count % widget.longEvery ? " is-done" : ""}` })),
-        h("span", { class: "timer__count-total" }, ` ${t.count} 回`)) : null,
+          h("span", { class: `timer__dot${i < tm.count % widget.longEvery ? " is-done" : ""}` })),
+        h("span", { class: "timer__count-total" }, t("timer.countN", { n: tm.count }))) : null,
     ),
-    h("span", { class: "timer__time", "aria-live": "off" }, formatDuration(timerRemaining(t))),
+    h("span", { class: "timer__time", "aria-live": "off" }, formatDuration(timerRemaining(tm))),
     h("span", { class: "timer__bar", "aria-hidden": "true" },
-      h("span", { class: "timer__bar-fill", style: { width: `${100 - (timerRemaining(t) / total) * 100}%` } })),
+      h("span", { class: "timer__bar-fill", style: { width: `${100 - (timerRemaining(tm) / total) * 100}%` } })),
     h("div", { class: "timer__controls" },
       running
-        ? control("⏸ 一時停止", "一時停止", pause, "button--primary")
-        : control("▶ 開始", "開始", start, "button--primary"),
-      control("↺", "リセット", reset),
-      widget.mode === "pomodoro" ? control("⏭", "次へ進む", skip) : null,
+        ? control(t("timer.pause"), t("timer.pauseLabel"), pause, "button--primary")
+        : control(t("timer.start"), t("timer.startLabel"), start, "button--primary"),
+      control("↺", t("timer.reset"), reset),
+      widget.mode === "pomodoro" ? control("⏭", t("timer.skip"), skip) : null,
     ),
   );
 }
@@ -1641,25 +1711,25 @@ function updateTimers() {
   for (const node of $$(".timer[data-widget-id]", el.dashboard)) {
     const widget = widgets().find((w) => w.id === node.dataset.widgetId);
     if (!widget) continue;
-    const t = readTimer(widget);
-    const left = timerRemaining(t);
+    const tm = readTimer(widget);
+    const left = timerRemaining(tm);
     $(".timer__time", node).textContent = formatDuration(left);
-    const total = phaseMinutes(widget, t.phase) * 60000;
+    const total = phaseMinutes(widget, tm.phase) * 60000;
     $(".timer__bar-fill", node).style.width = `${100 - (left / total) * 100}%`;
-    if (t.running && left <= 0) finishTimer(widget);
+    if (tm.running && left <= 0) finishTimer(widget);
   }
 }
 
 function finishTimer(widget, { silent = false } = {}) {
-  const t = readTimer(widget);
-  const name = widget.title || "タイマー";
+  const tm = readTimer(widget);
+  const name = widget.title || t("timer.phase.timer");
   if (widget.mode !== "pomodoro") {
-    writeTimer(widget, { ...t, running: false, endAt: 0, remaining: widget.minutes * 60000 });
-    if (!silent) notifyDone(`${name}：${widget.minutes} 分が経ちました`, widget);
+    writeTimer(widget, { ...tm, running: false, endAt: 0, remaining: widget.minutes * 60000 });
+    if (!silent) notifyDone(t("timer.doneTimer", { name, n: widget.minutes }), widget);
     refreshWidgetBody(widget);
     return;
   }
-  let { phase, count } = t;
+  let { phase, count } = tm;
   if (phase === "work") {
     count += silent ? 0 : 1;
     phase = count > 0 && count % widget.longEvery === 0 && !silent ? "long" : "short";
@@ -1671,8 +1741,8 @@ function finishTimer(widget, { silent = false } = {}) {
   writeTimer(widget, { phase, count, running: autoStart, endAt: autoStart ? Date.now() + next : 0, remaining: next });
   if (!silent) {
     notifyDone(phase === "work"
-      ? `${name}：休憩おわり。次の作業（${widget.work} 分）を始めましょう`
-      : `${name}：作業おわり。${TIMER_PHASES[phase]}（${phaseMinutes(widget, phase)} 分）にしましょう`, widget);
+      ? t("timer.doneBreak", { name, n: widget.work })
+      : t("timer.doneWork", { name, phase: t(TIMER_PHASES[phase]), n: phaseMinutes(widget, phase) }), widget);
   }
   refreshWidgetBody(widget);
 }
@@ -1687,7 +1757,7 @@ function notifyDone(message, widget) {
   showToast(`⏰ ${message}`);
   if (widget.sound !== false) playChime();
   if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
-    try { new Notification("ダッシュボード", { body: message, tag: `timer-${widget.id}` }); } catch { /* 使えない環境 */ }
+    try { new Notification(t("app.notificationTitle"), { body: message, tag: `timer-${widget.id}` }); } catch { /* 使えない環境 */ }
   }
 }
 
@@ -1714,15 +1784,12 @@ function playChime() {
 /* 世界時計                                                              */
 /* ================================================================== */
 
-const DEFAULT_WORLD_ZONES = [
-  { label: "東京", tz: "Asia/Tokyo" },
-  { label: "ロンドン", tz: "Europe/London" },
-  { label: "ニューヨーク", tz: "America/New_York" },
-];
+/** 新しく追加したときの都市（表示名は今の言語で zoneDefaultLabel() から付ける） */
+const DEFAULT_WORLD_ZONES = ["Asia/Tokyo", "Europe/London", "America/New_York"];
 
 function isValidTimeZone(tz) {
   try {
-    new Intl.DateTimeFormat("ja-JP", { timeZone: tz });
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
     return true;
   } catch {
     return false;
@@ -1731,36 +1798,40 @@ function isValidTimeZone(tz) {
 
 /** プルダウンに出す主な都市（地域ごと）。ここにないものは「すべてのタイムゾーン」から選ぶ */
 const ZONE_CHOICES = [
-  ["アジア", [
-    ["東京", "Asia/Tokyo"], ["ソウル", "Asia/Seoul"], ["北京・上海", "Asia/Shanghai"], ["香港", "Asia/Hong_Kong"],
-    ["台北", "Asia/Taipei"], ["マニラ", "Asia/Manila"], ["シンガポール", "Asia/Singapore"],
-    ["クアラルンプール", "Asia/Kuala_Lumpur"], ["バンコク", "Asia/Bangkok"], ["ハノイ・ホーチミン", "Asia/Ho_Chi_Minh"],
-    ["ジャカルタ", "Asia/Jakarta"], ["ニューデリー・ムンバイ", "Asia/Kolkata"], ["ドバイ", "Asia/Dubai"],
+  ["zone.region.asia", [
+    ["Asia/Tokyo", "東京", "Tokyo"], ["Asia/Seoul", "ソウル", "Seoul"], ["Asia/Shanghai", "北京・上海", "Beijing / Shanghai"],
+    ["Asia/Hong_Kong", "香港", "Hong Kong"], ["Asia/Taipei", "台北", "Taipei"], ["Asia/Manila", "マニラ", "Manila"],
+    ["Asia/Singapore", "シンガポール", "Singapore"], ["Asia/Kuala_Lumpur", "クアラルンプール", "Kuala Lumpur"],
+    ["Asia/Bangkok", "バンコク", "Bangkok"], ["Asia/Ho_Chi_Minh", "ハノイ・ホーチミン", "Hanoi / Ho Chi Minh City"],
+    ["Asia/Jakarta", "ジャカルタ", "Jakarta"], ["Asia/Kolkata", "ニューデリー・ムンバイ", "New Delhi / Mumbai"],
+    ["Asia/Dubai", "ドバイ", "Dubai"],
   ]],
-  ["オセアニア・太平洋", [
-    ["シドニー", "Australia/Sydney"], ["メルボルン", "Australia/Melbourne"], ["ブリスベン", "Australia/Brisbane"],
-    ["パース", "Australia/Perth"], ["オークランド", "Pacific/Auckland"], ["グアム", "Pacific/Guam"], ["ホノルル", "Pacific/Honolulu"],
+  ["zone.region.oceania", [
+    ["Australia/Sydney", "シドニー", "Sydney"], ["Australia/Melbourne", "メルボルン", "Melbourne"],
+    ["Australia/Brisbane", "ブリスベン", "Brisbane"], ["Australia/Perth", "パース", "Perth"],
+    ["Pacific/Auckland", "オークランド", "Auckland"], ["Pacific/Guam", "グアム", "Guam"], ["Pacific/Honolulu", "ホノルル", "Honolulu"],
   ]],
-  ["ヨーロッパ・アフリカ", [
-    ["ロンドン", "Europe/London"], ["ダブリン", "Europe/Dublin"], ["リスボン", "Europe/Lisbon"], ["パリ", "Europe/Paris"],
-    ["ベルリン", "Europe/Berlin"], ["アムステルダム", "Europe/Amsterdam"], ["チューリッヒ", "Europe/Zurich"],
-    ["ローマ", "Europe/Rome"], ["マドリード", "Europe/Madrid"], ["ストックホルム", "Europe/Stockholm"],
-    ["ヘルシンキ", "Europe/Helsinki"], ["アテネ", "Europe/Athens"], ["イスタンブール", "Europe/Istanbul"],
-    ["モスクワ", "Europe/Moscow"], ["カイロ", "Africa/Cairo"], ["ナイロビ", "Africa/Nairobi"],
-    ["ヨハネスブルグ", "Africa/Johannesburg"],
+  ["zone.region.europe", [
+    ["Europe/London", "ロンドン", "London"], ["Europe/Dublin", "ダブリン", "Dublin"], ["Europe/Lisbon", "リスボン", "Lisbon"],
+    ["Europe/Paris", "パリ", "Paris"], ["Europe/Berlin", "ベルリン", "Berlin"], ["Europe/Amsterdam", "アムステルダム", "Amsterdam"],
+    ["Europe/Zurich", "チューリッヒ", "Zurich"], ["Europe/Rome", "ローマ", "Rome"], ["Europe/Madrid", "マドリード", "Madrid"],
+    ["Europe/Stockholm", "ストックホルム", "Stockholm"], ["Europe/Helsinki", "ヘルシンキ", "Helsinki"],
+    ["Europe/Athens", "アテネ", "Athens"], ["Europe/Istanbul", "イスタンブール", "Istanbul"], ["Europe/Moscow", "モスクワ", "Moscow"],
+    ["Africa/Cairo", "カイロ", "Cairo"], ["Africa/Nairobi", "ナイロビ", "Nairobi"], ["Africa/Johannesburg", "ヨハネスブルグ", "Johannesburg"],
   ]],
-  ["南北アメリカ", [
-    ["ニューヨーク", "America/New_York"], ["トロント", "America/Toronto"], ["シカゴ", "America/Chicago"],
-    ["デンバー", "America/Denver"], ["フェニックス", "America/Phoenix"], ["ロサンゼルス・サンフランシスコ", "America/Los_Angeles"],
-    ["シアトル・バンクーバー", "America/Vancouver"], ["アンカレッジ", "America/Anchorage"],
-    ["メキシコシティ", "America/Mexico_City"], ["サンパウロ", "America/Sao_Paulo"],
-    ["ブエノスアイレス", "America/Argentina/Buenos_Aires"],
+  ["zone.region.americas", [
+    ["America/New_York", "ニューヨーク", "New York"], ["America/Toronto", "トロント", "Toronto"],
+    ["America/Chicago", "シカゴ", "Chicago"], ["America/Denver", "デンバー", "Denver"], ["America/Phoenix", "フェニックス", "Phoenix"],
+    ["America/Los_Angeles", "ロサンゼルス・サンフランシスコ", "Los Angeles / San Francisco"],
+    ["America/Vancouver", "シアトル・バンクーバー", "Seattle / Vancouver"], ["America/Anchorage", "アンカレッジ", "Anchorage"],
+    ["America/Mexico_City", "メキシコシティ", "Mexico City"], ["America/Sao_Paulo", "サンパウロ", "São Paulo"],
+    ["America/Argentina/Buenos_Aires", "ブエノスアイレス", "Buenos Aires"],
   ]],
-  ["その他", [["協定世界時（UTC）", "UTC"]]],
+  ["zone.region.other", [["UTC", "協定世界時（UTC）", "Coordinated Universal Time (UTC)"]]],
 ];
 
 /** 主な都市のタイムゾーン → 都市名 */
-const ZONE_CITY = new Map(ZONE_CHOICES.flatMap(([, list]) => list.map(([name, tz]) => [tz, name])));
+const ZONE_CITY = new Map(ZONE_CHOICES.flatMap(([, list]) => list.map(([tz, ja, en]) => [tz, { ja, en }])));
 
 /** 「UTC+9」のような時差の表記（夏時間は今日の時点のもの） */
 function utcOffsetLabel(tz) {
@@ -1774,27 +1845,28 @@ function utcOffsetLabel(tz) {
   }
 }
 
-let zoneOptionsCache = null;
+let zoneOptionsCache = null; // { lang, groups }
 
 /** プルダウンの中身（毎回作り直すと重いので、一度作ったものを複製して使う） */
 function zoneOptionGroups() {
-  if (!zoneOptionsCache) {
+  if (zoneOptionsCache?.lang !== language()) {
     const withOffset = (text, tz) => {
       const offset = utcOffsetLabel(tz);
-      return offset ? `${text}（${offset}）` : text;
+      return offset ? t("common.withParen", { text, note: offset }) : text;
     };
-    const groups = ZONE_CHOICES.map(([region, list]) => h("optgroup", { label: region },
-      ...list.filter(([, tz]) => isValidTimeZone(tz)).map(([name, tz]) => h("option", { value: tz }, withOffset(name, tz)))));
+    const groups = ZONE_CHOICES.map(([region, list]) => h("optgroup", { label: t(region) },
+      ...list.filter(([tz]) => isValidTimeZone(tz))
+        .map(([tz, ja, en]) => h("option", { value: tz }, withOffset(localized({ ja, en }), tz)))));
     let all = [];
     try { all = Intl.supportedValuesOf("timeZone"); } catch { /* 古いブラウザ：主な都市だけ */ }
     const others = all.filter((tz) => !ZONE_CITY.has(tz));
     if (others.length) {
-      groups.push(h("optgroup", { label: "すべてのタイムゾーン" },
+      groups.push(h("optgroup", { label: t("zone.all") },
         ...others.map((tz) => h("option", { value: tz }, withOffset(tz.replace(/_/g, " "), tz)))));
     }
-    zoneOptionsCache = groups;
+    zoneOptionsCache = { lang: language(), groups };
   }
-  return zoneOptionsCache.map((g) => g.cloneNode(true));
+  return zoneOptionsCache.groups.map((g) => g.cloneNode(true));
 }
 
 /** タイムゾーンのプルダウンに中身を入れて、値を選ぶ（一覧にない値も選べるように足す） */
@@ -1808,14 +1880,15 @@ function fillZoneSelect(select, value, firstOption) {
 
 /** タイムゾーンから自動で付ける表示名 */
 function zoneDefaultLabel(tz) {
-  return ZONE_CITY.get(tz) || tz.split("/").pop().replace(/_/g, " ");
+  const city = ZONE_CITY.get(tz);
+  return city ? localized(city) : tz.split("/").pop().replace(/_/g, " ");
 }
 
 /** 世界時計の設定欄に、都市 1 行を足す */
 function addZoneRow(zone) {
-  const label = h("input", { class: "input", name: "zoneLabel", placeholder: "表示名", "aria-label": "表示名" });
-  const select = h("select", { class: "input", name: "zoneTz", "aria-label": "タイムゾーン" });
-  fillZoneSelect(select, zone?.tz || "", h("option", { value: "" }, "都市を選んでください"));
+  const label = h("input", { class: "input", name: "zoneLabel", placeholder: t("link.title"), "aria-label": t("link.title") });
+  const select = h("select", { class: "input", name: "zoneTz", "aria-label": t("dialog.timeZone") });
+  fillZoneSelect(select, zone?.tz || "", h("option", { value: "" }, t("zone.choose")));
   label.value = zone?.label || "";
   // 表示名を自分で変えていなければ、選んだ都市の名前に合わせる
   let autoLabel = zone ? zoneDefaultLabel(zone.tz) : "";
@@ -1827,7 +1900,7 @@ function addZoneRow(zone) {
   });
   const row = h("li", { class: "zone-list__row" }, label, select,
     h("button", {
-      type: "button", class: "button button--icon button--ghost", title: "この都市を削除", "aria-label": "この都市を削除",
+      type: "button", class: "button button--icon button--ghost", title: t("zone.remove"), "aria-label": t("zone.remove"),
       onclick: () => row.remove(),
     }, "×"));
   $("#world-zone-list").append(row);
@@ -1840,7 +1913,7 @@ $("#world-zone-add").addEventListener("click", () => {
 
 function renderWorldClock(widget) {
   if (widget.zones.length === 0) {
-    return h("p", { class: "widget__empty" }, "「編集」→ ✎ で表示する都市を設定してください");
+    return h("p", { class: "widget__empty" }, t("worldclock.empty"));
   }
   return h("ul", { class: "wclock" },
     ...widget.zones.map((z) => h("li", { class: "wclock__row", dataset: { tz: z.tz } },
@@ -1876,8 +1949,8 @@ function updateWorldClocks(now) {
     const sign = hours > 0 ? "+" : hours < 0 ? "−" : "±";
     const abs = Math.abs(hours);
     const offset = Number.isInteger(abs) ? `${abs}` : abs.toFixed(1);
-    const day = dayDiff === 0 ? "今日" : dayDiff > 0 ? "明日" : "昨日";
-    $(".wclock__diff", row).textContent = `${day} ${sign}${offset}時間`;
+    const day = dayDiff === 0 ? t("common.today") : dayDiff > 0 ? t("common.tomorrow") : t("common.yesterday");
+    $(".wclock__diff", row).textContent = t("worldclock.diff", { day, diff: `${sign}${offset}` });
   }
 }
 
@@ -1906,7 +1979,7 @@ function habitStreak(done) {
 function renderHabit(widget) {
   if (widget.habits.length === 0) {
     return h("p", { class: "widget__empty" },
-      editing ? "見出しの「＋」で習慣を追加してください（例：運動、読書、日記）" : "習慣がありません。「編集」→ 見出しの「＋」で追加できます");
+      editing ? t("habit.emptyEditing") : t("habit.empty"));
   }
   const today = new Date();
   const days = Array.from({ length: widget.days }, (_, i) => {
@@ -1917,9 +1990,9 @@ function renderHabit(widget) {
   const head = h("tr", {},
     h("th", { class: "habit__name-head", scope: "col" }, ""),
     ...days.map((d, i) => h("th", { scope: "col", class: i === days.length - 1 ? "is-today" : "" },
-      h("span", { class: "habit__dow" }, d.toLocaleDateString("ja-JP", { weekday: "narrow" })),
+      h("span", { class: "habit__dow" }, d.toLocaleDateString(locale(), { weekday: "narrow" })),
       h("span", { class: "habit__date" }, String(d.getDate())))),
-    h("th", { scope: "col", class: "habit__streak-head", title: "連続日数" }, "連続"),
+    h("th", { scope: "col", class: "habit__streak-head", title: t("habit.streakTitle") }, t("habit.streak")),
   );
   const rows = widget.habits.map((habit) => {
     const done = new Set(widget.log[habit.id] || []);
@@ -1928,18 +2001,18 @@ function renderHabit(widget) {
         h("span", { class: "habit__name-text" }, habit.name),
         h("span", { class: "habit__tools" },
           h("button", {
-            type: "button", class: "button button--small button--ghost", "aria-label": `「${habit.name}」の名前を変える`, title: "名前を変える",
+            type: "button", class: "button button--small button--ghost", "aria-label": t("habit.renameAria", { name: habit.name }), title: t("common.rename"),
             onclick: async () => {
-              const name = await askText({ title: "習慣の名前を変える", label: "習慣", value: habit.name });
+              const name = await askText({ title: t("habit.renameTitle"), label: t("habit.label"), value: habit.name });
               if (!name) return;
               habit.name = name;
               commit();
             },
           }, "✎"),
           h("button", {
-            type: "button", class: "button button--small button--ghost button--danger", "aria-label": `「${habit.name}」を削除`, title: "削除",
+            type: "button", class: "button button--small button--ghost button--danger", "aria-label": t("habit.deleteAria", { name: habit.name }), title: t("common.delete"),
             onclick: () => {
-              if (!confirm(`習慣「${habit.name}」と、その記録を削除しますか？`)) return;
+              if (!confirm(t("habit.deleteConfirm", { name: habit.name }))) return;
               widget.habits = widget.habits.filter((x) => x.id !== habit.id);
               delete widget.log[habit.id];
               commit();
@@ -1955,7 +2028,7 @@ function renderHabit(widget) {
             type: "button",
             class: `habit__cell${on ? " is-done" : ""}`,
             "aria-pressed": String(on),
-            "aria-label": `${habit.name}：${d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" })}`,
+            "aria-label": `${habit.name}: ${d.toLocaleDateString(locale(), { month: "numeric", day: "numeric" })}`,
             onclick: () => {
               const set = new Set(widget.log[habit.id] || []);
               if (set.has(key)) set.delete(key);
@@ -1985,7 +2058,7 @@ function pruneHabitLog(keys) {
 }
 
 async function addHabit(widget) {
-  const name = await askText({ title: "習慣を追加", label: "習慣（例：運動 30 分、読書、日記）", value: "" });
+  const name = await askText({ title: t("habit.add"), label: t("habit.addLabel"), value: "" });
   if (!name) return;
   widget.habits.push({ id: uid(), name });
   commit();
@@ -2013,8 +2086,8 @@ function setGitHubToken(token) {
 
 async function askGitHubToken() {
   const token = await askText({
-    title: "GitHub のトークンを設定",
-    label: "個人用アクセストークン（この端末のブラウザにだけ保存し、サーバーには送りません）",
+    title: t("github.tokenTitle"),
+    label: t("github.tokenLabel"),
     value: "",
   });
   if (!token) return;
@@ -2033,12 +2106,12 @@ function renderGitHub(widget) {
   if (!token) {
     return h("div", { class: "google-connect" },
       h("p", { class: "widget__empty" },
-        "GitHub の個人用アクセストークンを、この端末に設定すると表示できます（README の「GitHub」を参照）。"),
-      h("button", { type: "button", class: "button button--primary", onclick: askGitHubToken }, "トークンを設定"),
+        t("github.needToken")),
+      h("button", { type: "button", class: "button button--primary", onclick: askGitHubToken }, t("github.setToken")),
     );
   }
   if (widget.lists.length === 0) {
-    return h("p", { class: "widget__empty" }, "「編集」→ ✎ で表示する一覧を選んでください");
+    return h("p", { class: "widget__empty" }, t("github.chooseLists"));
   }
   return renderRemote(widget, {
     cacheKey: `${widget.lists.join(",")}:${widget.limit}:${token.length}`,
@@ -2057,11 +2130,11 @@ function renderGitHub(widget) {
 function relativeTime(date) {
   if (!date) return "";
   const min = Math.round((Date.now() - date) / 60000);
-  if (min < 60) return `${Math.max(min, 1)} 分前`;
+  if (min < 60) return t("common.minutesAgo", { n: Math.max(min, 1) });
   const hours = Math.round(min / 60);
-  if (hours < 24) return `${hours} 時間前`;
+  if (hours < 24) return t("common.hoursAgo", { n: hours });
   const days = Math.round(hours / 24);
-  return days < 30 ? `${days} 日前` : date.toLocaleDateString("ja-JP");
+  return days < 30 ? t("common.daysAgo", { n: days }) : date.toLocaleDateString(locale());
 }
 
 function renderGitHubLists({ lists }) {
@@ -2069,12 +2142,12 @@ function renderGitHubLists({ lists }) {
     ...lists.map((list) => h("section", { class: "gh-list" },
       h("h3", { class: "gh-list__label" }, list.label, h("span", { class: "gh-list__count" }, String(list.total))),
       list.items.length === 0
-        ? h("p", { class: "gh-list__empty" }, "ありません")
+        ? h("p", { class: "gh-list__empty" }, t("common.none"))
         : h("ul", { class: "gh-items" },
           ...list.items.map((it) => h("li", { class: "gh-item" },
             h("a", { class: "gh-item__link", href: it.url, target: "_blank", rel: "noopener noreferrer", title: it.title },
               h("span", { class: "gh-item__title" }, it.draft ? `[Draft] ${it.title}` : it.title),
-              h("span", { class: "gh-item__meta" }, `${it.repo} #${it.number}・${relativeTime(it.updated)}`),
+              h("span", { class: "gh-item__meta" }, `${it.repo} #${it.number} · ${relativeTime(it.updated)}`),
             ),
           ))),
     )),
@@ -2106,7 +2179,8 @@ const WIDGET_FORMS = {
       const lon = Number(f.weatherLon.value);
       if (f.weatherLat.value !== "" && Number.isFinite(lat) && Number.isFinite(lon)) {
         // 「現在地を使う」で緯度・経度が入っている
-        Object.assign(w, { place: place || "現在地", lat, lon, placeLabel: place || "現在地", geocodedPlace: place || "現在地" });
+        const here = !place || place === t("weather.here") ? HERE : place;
+        Object.assign(w, { place: here, lat, lon, placeLabel: here, geocodedPlace: here });
       } else if (place !== w.place) {
         Object.assign(w, { place });
         delete w.lat; delete w.lon; delete w.placeLabel; delete w.geocodedPlace;
@@ -2155,15 +2229,15 @@ const WIDGET_FORMS = {
     },
   },
   worldclock: {
-    init: (w) => { w.zones = DEFAULT_WORLD_ZONES.map((z) => ({ id: uid(), ...z })); },
+    init: (w) => { w.zones = DEFAULT_WORLD_ZONES.map((tz) => ({ id: uid(), tz, label: zoneDefaultLabel(tz) })); },
     normalize: (w) => {
       w.zones = (Array.isArray(w.zones) ? w.zones : [])
         .filter((z) => z && typeof z.tz === "string" && isValidTimeZone(z.tz))
-        .map((z) => ({ id: z.id ? String(z.id) : uid(), label: typeof z.label === "string" ? z.label : z.tz, tz: z.tz }));
+        .map((z) => ({ id: z.id ? String(z.id) : uid(), label: typeof localText(z.label) === "string" ? localText(z.label) : z.tz, tz: z.tz }));
     },
     fill: (f, w) => {
       $("#world-zone-list").replaceChildren();
-      for (const zone of w ? w.zones : DEFAULT_WORLD_ZONES) addZoneRow(zone);
+      for (const zone of w ? w.zones : DEFAULT_WORLD_ZONES.map((tz) => ({ tz, label: zoneDefaultLabel(tz) }))) addZoneRow(zone);
     },
     save: (f, w) => {
       w.zones = $$(".zone-list__row", el.widgetForm)
@@ -2199,8 +2273,8 @@ const WIDGET_FORMS = {
       for (const box of f.githubLists) box.checked = lists.includes(box.value);
       f.githubLimit.value = String(w?.limit || 5);
       $("#github-token-state").textContent = getGitHubToken()
-        ? "この端末にはトークンが設定されています。"
-        : "この端末にはトークンが設定されていません（ウィジェットの「トークンを設定」から設定します）。";
+        ? t("dialog.githubTokenSet")
+        : t("dialog.githubTokenUnset");
       $("#github-token-clear").hidden = !getGitHubToken();
     },
     save: (f, w) => {
@@ -2219,7 +2293,7 @@ function renderTodo(widget) {
   const wrap = h("div", { class: "todo" });
   if (cats.length === 0) {
     wrap.append(h("p", { class: "widget__empty" },
-      editing ? "見出しの「＋」でカテゴリーを追加してください" : "カテゴリーがありません。「編集」からカテゴリーを追加できます"));
+      editing ? t("todo.emptyEditing") : t("todo.emptyCategories")));
     return wrap;
   }
 
@@ -2231,19 +2305,19 @@ function renderTodo(widget) {
   const input = h("input", {
     class: "input todo__input",
     type: "text",
-    placeholder: "ToDo を追加",
-    "aria-label": "ToDo の内容",
+    placeholder: t("todo.placeholder"),
+    "aria-label": t("todo.inputLabel"),
     maxlength: "200",
     "data-todo-input": widget.id,
   });
-  const select = h("select", { class: "input todo__select", "aria-label": "カテゴリー" },
+  const select = h("select", { class: "input todo__select", "aria-label": t("todo.category") },
     ...cats.map((c) => h("option", { value: c.id }, c.name)));
   select.value = filter !== "all"
     ? filter
     : cats.some((c) => c.id === widget.lastCategoryId) ? widget.lastCategoryId : cats[0].id;
   if (cats.length === 1) select.hidden = true;
   const form = h("form", { class: "todo__form" },
-    input, select, h("button", { class: "button button--primary", type: "submit" }, "追加"));
+    input, select, h("button", { class: "button button--primary", type: "submit" }, t("common.add")));
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const text = input.value.trim();
@@ -2264,8 +2338,8 @@ function renderTodo(widget) {
       onclick: () => { todoFilters.set(widget.id, id); render(); },
     }, label, count ? h("span", { class: "todo-chip__count" }, count) : null);
     const remaining = (id) => widget.items.filter((i) => !i.done && (id === "all" || i.categoryId === id)).length;
-    wrap.append(h("div", { class: "todo__chips", role: "group", "aria-label": "カテゴリーで絞り込む" },
-      chip("all", "すべて", remaining("all")),
+    wrap.append(h("div", { class: "todo__chips", role: "group", "aria-label": t("todo.filter") },
+      chip("all", t("todo.all"), remaining("all")),
       ...cats.map((c) => chip(c.id, c.name, remaining(c.id))),
     ));
   }
@@ -2280,28 +2354,28 @@ function renderTodo(widget) {
       ...items.map((item) => renderTodoItem(widget, item)));
     groups.append(h("section", { class: "todo-group", dataset: { categoryId: cat.id } },
       h("header", { class: "todo-group__header" },
-        h("span", { class: "todo-group__handle", title: "ドラッグでカテゴリーを並べ替え", "aria-hidden": "true" }, "⠿"),
+        h("span", { class: "todo-group__handle", title: t("todo.categoryDrag"), "aria-hidden": "true" }, "⠿"),
         h("span", { class: "todo-group__name" }, cat.name),
-        h("span", { class: "todo-group__count", title: "未完了 / 全体" }, `${left}/${items.length}`),
+        h("span", { class: "todo-group__count", title: t("todo.countTitle") }, `${left}/${items.length}`),
         h("span", { class: "todo-group__tools" },
           h("button", {
             type: "button",
             class: "button button--small button--ghost",
-            "aria-label": `カテゴリー「${cat.name}」の名前を変える`,
-            title: "名前を変える",
+            "aria-label": t("todo.renameCategoryAria", { name: cat.name }),
+            title: t("common.rename"),
             onclick: () => renameTodoCategory(widget, cat),
           }, "✎"),
           h("button", {
             type: "button",
             class: "button button--small button--ghost button--danger",
-            "aria-label": `カテゴリー「${cat.name}」を削除`,
-            title: "カテゴリーを削除",
+            "aria-label": t("todo.deleteCategoryAria", { name: cat.name }),
+            title: t("todo.deleteCategory"),
             onclick: () => deleteTodoCategory(widget, cat),
           }, "×"),
         ),
       ),
       list,
-      items.length === 0 && !editing ? h("p", { class: "todo-group__empty" }, "ToDo はありません") : null,
+      items.length === 0 && !editing ? h("p", { class: "todo-group__empty" }, t("todo.empty")) : null,
     ));
   }
   wrap.append(groups);
@@ -2318,7 +2392,7 @@ function renderTodo(widget) {
           widget.items = widget.items.filter((i) => !(i.done && shownIds.has(i.categoryId)));
           commit();
         },
-      }, `完了した ${doneCount} 件を削除`),
+      }, t("todo.clearDone", { n: doneCount })),
     ));
   }
   return wrap;
@@ -2329,7 +2403,7 @@ function renderTodoItem(widget, item) {
     type: "checkbox",
     class: "todo-item__check",
     checked: item.done,
-    "aria-label": `${item.text} を完了にする`,
+    "aria-label": t("todo.completeAria", { name: item.text }),
   });
   check.addEventListener("change", () => {
     item.done = check.checked;
@@ -2341,7 +2415,7 @@ function renderTodoItem(widget, item) {
   label.addEventListener("click", async (event) => {
     if (!editing || event.target === check) return;
     event.preventDefault();
-    const value = await askText({ title: "ToDo を編集", label: "内容", value: item.text });
+    const value = await askText({ title: t("todo.editTitle"), label: t("todo.editLabel"), value: item.text });
     if (value) {
       item.text = value;
       commit();
@@ -2352,8 +2426,8 @@ function renderTodoItem(widget, item) {
     h("button", {
       type: "button",
       class: "button button--small button--ghost todo-item__delete",
-      "aria-label": `${item.text} を削除`,
-      title: "削除",
+      "aria-label": t("todo.deleteAria", { name: item.text }),
+      title: t("common.delete"),
       onclick: () => {
         widget.items = widget.items.filter((i) => i.id !== item.id);
         commit();
@@ -2363,14 +2437,14 @@ function renderTodoItem(widget, item) {
 }
 
 async function addTodoCategory(widget) {
-  const name = await askText({ title: "カテゴリーを追加", label: "カテゴリー名", value: "" });
+  const name = await askText({ title: t("todo.addCategory"), label: t("todo.categoryName"), value: "" });
   if (!name) return;
   widget.categories.push({ id: uid(), name });
   commit();
 }
 
 async function renameTodoCategory(widget, cat) {
-  const name = await askText({ title: "カテゴリーの名前を変える", label: "カテゴリー名", value: cat.name });
+  const name = await askText({ title: t("todo.renameCategoryTitle"), label: t("todo.categoryName"), value: cat.name });
   if (!name) return;
   cat.name = name;
   commit();
@@ -2378,8 +2452,8 @@ async function renameTodoCategory(widget, cat) {
 
 function deleteTodoCategory(widget, cat) {
   const count = widget.items.filter((i) => i.categoryId === cat.id).length;
-  const extra = count ? `\n（このカテゴリーの ToDo ${count} 件も消えます）` : "";
-  if (!confirm(`カテゴリー「${cat.name}」を削除しますか？${extra}`)) return;
+  const extra = count ? t("todo.deleteCategoryTodos", { n: count }) : "";
+  if (!confirm(t("todo.deleteCategoryConfirm", { name: cat.name }) + extra)) return;
   widget.categories = widget.categories.filter((c) => c.id !== cat.id);
   widget.items = widget.items.filter((i) => i.categoryId !== cat.id);
   commit();
@@ -2506,16 +2580,16 @@ document.addEventListener("drop", (event) => {
   if (widget.type === "photo") {
     const src = readDroppedImage(event.dataTransfer);
     if (!src) {
-      showToast("画像の URL を読み取れませんでした");
+      showToast(t("photo.dropUnreadable"));
       return;
     }
-    if (addPhoto(widget, src)) showToast(`「${widget.title || "写真"}」に写真を追加しました`);
+    if (addPhoto(widget, src)) showToast(t("photo.added", { name: widget.title || t("widget.photo") }));
     return;
   }
 
   const link = readDroppedLink(event.dataTransfer);
   if (!link) {
-    showToast("URL を読み取れませんでした");
+    showToast(t("link.unreadable"));
     return;
   }
   // 埋め込みウィジェット：表示する URL を差し替える
@@ -2523,20 +2597,20 @@ document.addEventListener("drop", (event) => {
     const previous = widget.embedUrl;
     widget.embedUrl = link.url;
     commit();
-    showToast(toYouTubeEmbed(link.url) ? "YouTube 動画を埋め込みました" : "埋め込む URL を変更しました",
-      previous ? { label: "元に戻す", run: () => { widget.embedUrl = previous; commit(); } } : null);
+    showToast(toYouTubeEmbed(link.url) ? t("embed.embeddedYouTube") : t("embed.changed"),
+      previous ? { label: t("common.undo"), run: () => { widget.embedUrl = previous; commit(); } } : null);
     return;
   }
-  const name = widget.title || "リンク集";
+  const name = widget.title || t("widget.links");
   if (widget.items.some((i) => safeUrl(i.url) === link.url)) {
-    showToast(`「${name}」にはすでに登録されています`);
+    showToast(t("link.duplicate", { name }));
     return;
   }
   const item = { id: uid(), url: link.url, title: link.title, icon: "", description: "" };
   widget.items.push(item);
   commit();
-  showToast(`「${link.title || hostname(link.url)}」を「${name}」に追加しました`, {
-    label: "名前を編集",
+  showToast(t("link.added", { link: link.title || hostname(link.url), name }), {
+    label: t("link.editName"),
     run: () => openLinkDialog(widget.id, item.id),
   });
 });
@@ -2675,7 +2749,7 @@ function setEditing(value) {
   if (editing) el.root.dataset.editing = "";
   else delete el.root.dataset.editing;
   el.editToggle.setAttribute("aria-pressed", String(editing));
-  $(".button__label", el.editToggle).textContent = editing ? "完了" : "編集";
+  $(".button__label", el.editToggle).textContent = editing ? t("common.done") : t("common.edit");
   render();
 }
 
@@ -2716,6 +2790,11 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     el.filter.focus();
   }
+  if ((event.key === "d" || event.key === "D") && !typing && !event.ctrlKey && !event.metaKey && !event.altKey
+    && !event.isComposing && !document.querySelector("dialog[open]")) {
+    event.preventDefault();
+    toggleMode();
+  }
 });
 
 /* ================================================================== */
@@ -2742,10 +2821,10 @@ function openWidgetDialog(widgetId) {
   const widget = widgets().find((w) => w.id === widgetId);
   const f = el.widgetForm.elements;
 
-  $("#widget-dialog-title").textContent = widget ? "ウィジェットを編集" : "ウィジェットを追加";
+  $("#widget-dialog-title").textContent = widget ? t("widget.editTitle") : t("dialog.widgetAdd");
   // アドオンを外したなどで、知らない種類のウィジェットも編集（大きさ・削除など）できるように
   if (widget && ![...f.type.options].some((o) => o.value === widget.type)) {
-    f.type.append(h("option", { value: widget.type }, `${widget.type}（アドオンが見つかりません）`));
+    f.type.append(h("option", { value: widget.type }, t("dialog.missingAddon", { type: widget.type })));
   }
   f.type.value = widget?.type || "links";
   f.type.disabled = Boolean(widget); // 種類は作成時のみ選べる
@@ -2761,7 +2840,7 @@ function openWidgetDialog(widgetId) {
   f.searchUrl.value = widget?.searchUrl || "";
   f.embedUrl.value = widget?.embedUrl || "";
   f.height.value = widget?.height || 400;
-  fillZoneSelect(f.timeZone, widget?.timeZone || "", h("option", { value: "" }, "ブラウザの設定に合わせる"));
+  fillZoneSelect(f.timeZone, widget?.timeZone || "", h("option", { value: "" }, t("dialog.timeZoneBrowser")));
   f.photoFit.value = widget?.fit || "cover";
   f.noteMarkdown.checked = widget?.markdown !== false;
   f.calendarDays.value = String(widget?.days || 3);
@@ -2791,8 +2870,8 @@ function updateSizeOptions() {
   const hint = $("#size-hint");
   const isMin = min.size !== "s" || min.rows > 1;
   hint.hidden = !isMin && !fixed;
-  hint.textContent = fixed ? `この種類の高さは ${fixed} 段で固定です`
-    : isMin ? `この種類の最小サイズ：幅 ${SIZE_NAMES[min.size]}・高さ ${min.rows} 段` : "";
+  hint.textContent = fixed ? t("dialog.rowsFixed", { n: fixed })
+    : isMin ? t("dialog.minSize", { size: SIZE_NAMES[min.size], rows: min.rows }) : "";
 }
 
 el.widgetForm.elements.accent.addEventListener("input", () => {
@@ -2812,7 +2891,7 @@ el.widgetDialog.addEventListener("toggle", updateTimerFields);
 $("#weather-here").addEventListener("click", () => {
   const f = el.widgetForm.elements;
   if (!navigator.geolocation) {
-    showToast("このブラウザでは現在地を使えません");
+    showToast(t("dialog.geoUnsupported"));
     return;
   }
   const button = $("#weather-here");
@@ -2820,10 +2899,10 @@ $("#weather-here").addEventListener("click", () => {
   navigator.geolocation.getCurrentPosition((pos) => {
     f.weatherLat.value = pos.coords.latitude.toFixed(4);
     f.weatherLon.value = pos.coords.longitude.toFixed(4);
-    f.weatherPlace.value = "現在地";
+    f.weatherPlace.value = t("weather.here");
     button.disabled = false;
   }, () => {
-    showToast("現在地を取得できませんでした。ブラウザで位置情報の利用を許可してください");
+    showToast(t("dialog.geoFailed"));
     button.disabled = false;
   }, { timeout: 10000, maximumAge: 600000 });
 });
@@ -2835,7 +2914,7 @@ el.widgetForm.elements.weatherPlace.addEventListener("input", () => {
 
 // GitHub：この端末に保存したトークンを消す
 $("#github-token-clear").addEventListener("click", () => {
-  if (!confirm("この端末に保存した GitHub のトークンを削除しますか？")) return;
+  if (!confirm(t("dialog.githubTokenClearConfirm"))) return;
   setGitHubToken("");
   WIDGET_FORMS.github.fill(el.widgetForm.elements, widgets().find((w) => w.id === editingWidgetId) || null);
   refreshRemoteWidgets();
@@ -2859,7 +2938,7 @@ el.widgetDialog.addEventListener("close", () => {
     if (widget.type === "note") widget.text = "";
     if (widget.type === "photo") widget.photos = [];
     if (widget.type === "todo") {
-      widget.categories = DEFAULT_TODO_CATEGORIES.map((name) => ({ id: uid(), name }));
+      widget.categories = DEFAULT_TODO_CATEGORIES.map((key) => ({ id: uid(), name: t(key) }));
       widget.items = [];
     }
     WIDGET_FORMS[widget.type]?.init?.(widget);
@@ -2898,8 +2977,8 @@ el.widgetDialog.addEventListener("close", () => {
     page().widgets = widgets().filter((w) => w.id !== widget.id);
     target.widgets.push(widget);
     commit();
-    showToast(`「${widget.title || typeName(widget.type)}」をタブ「${target.name}」に移しました`, {
-      label: "そのタブを開く",
+    showToast(t("dialog.widgetMoved", { name: widget.title || typeName(widget.type), tab: target.name }), {
+      label: t("dialog.openThatTab"),
       run: () => switchPage(target.id),
     });
     return;
@@ -2910,10 +2989,10 @@ el.widgetDialog.addEventListener("close", () => {
 el.widgetDelete.addEventListener("click", () => {
   const widget = widgets().find((w) => w.id === editingWidgetId);
   if (!widget) return;
-  const extra = widget.type === "links" && widget.items.length ? `（リンク ${widget.items.length} 件も消えます）`
-    : widget.type === "todo" && widget.items.length ? `（ToDo ${widget.items.length} 件も消えます）`
-    : widget.type === "photo" && widget.photos.length ? `（登録した写真 ${widget.photos.length} 枚の URL も消えます）` : "";
-  if (!confirm(`「${widget.title || typeName(widget.type)}」を削除しますか？${extra}`)) return;
+  const extra = widget.type === "links" && widget.items.length ? t("dialog.widgetDeleteLinks", { n: widget.items.length })
+    : widget.type === "todo" && widget.items.length ? t("dialog.widgetDeleteTodos", { n: widget.items.length })
+    : widget.type === "photo" && widget.photos.length ? t("dialog.widgetDeletePhotos", { n: widget.photos.length }) : "";
+  if (!confirm(t("dialog.widgetDeleteConfirm", { name: widget.title || typeName(widget.type) }) + extra)) return;
   page().widgets = widgets().filter((w) => w.id !== editingWidgetId);
   el.widgetDialog.close("deleted");
   commit();
@@ -2931,7 +3010,7 @@ function openLinkDialog(widgetId, itemId) {
   const item = widget?.items.find((i) => i.id === itemId);
   const f = el.linkForm.elements;
 
-  $("#link-dialog-title").textContent = item ? "リンクを編集" : "リンクを追加";
+  $("#link-dialog-title").textContent = item ? t("link.editTitle") : t("link.add");
   f.url.value = item?.url || "";
   f.title.value = item?.title || "";
   f.icon.value = item?.icon || "";
@@ -2944,7 +3023,7 @@ function openLinkDialog(widgetId, itemId) {
 el.linkForm.addEventListener("submit", (event) => {
   if (event.submitter?.value === "ok" && !safeUrl(el.linkForm.elements.url.value)) {
     event.preventDefault();
-    el.linkForm.elements.url.setCustomValidity("http:// か https:// で始まる URL を入力してください");
+    el.linkForm.elements.url.setCustomValidity(t("link.invalidUrl"));
     el.linkForm.elements.url.reportValidity();
   }
 });
@@ -2983,6 +3062,8 @@ el.linkDelete.addEventListener("click", () => {
 /* ================================================================== */
 
 /** テーマの見本。data-preset を持たせると、中はそのテーマの CSS 変数で描かれる */
+function renderThemePicker() {
+const selected = el.settingsForm.elements.preset?.value;
 el.themePicker.replaceChildren(
   ...THEME_PRESETS.map((p) =>
     h("label", { class: "theme-option" },
@@ -3003,16 +3084,22 @@ el.themePicker.replaceChildren(
         ),
       ),
       h("span", { class: "theme-option__label" },
-        p.label,
-        p.note ? h("span", { class: "theme-option__note" }, `（${p.note}）`) : null,
+        t(p.label),
+        p.note ? h("span", { class: "theme-option__note" }, t("common.withParen", { text: "", note: t(p.note) }).trim()) : null,
       ),
     ),
   ),
 );
+if (selected != null) el.settingsForm.elements.preset.value = selected;
+}
+
+/** 設定画面の「言語」の選択肢（「自動」はそのまま、言語名はその言語で書く） */
+el.settingsForm.elements.language.append(...LANGUAGES.map((l) => h("option", { value: l.id }, l.label)));
 
 el.settingsOpen.addEventListener("click", () => {
   const f = el.settingsForm.elements;
   f.title.value = state.title;
+  f.language.value = state.settings.language;
   f.mode.value = state.settings.mode;
   f.preset.value = state.settings.preset;
   f.density.value = state.settings.density;
@@ -3026,10 +3113,11 @@ el.settingsOpen.addEventListener("click", () => {
 
 // 配色・テーマ・表示密度・レイアウトは選んだ時点で画面に反映して見せる（保存はまだ）
 el.settingsForm.addEventListener("change", (event) => {
-  if (!["mode", "preset", "density", "layout"].includes(event.target.name)) return;
+  if (!["language", "mode", "preset", "density", "layout"].includes(event.target.name)) return;
   const f = el.settingsForm.elements;
   applySettings({
     ...state.settings,
+    language: f.language.value,
     mode: f.mode.value,
     preset: f.preset.value,
     density: f.density.value,
@@ -3042,6 +3130,7 @@ el.settingsDialog.addEventListener("close", () => {
     const f = el.settingsForm.elements;
     state.title = f.title.value.trim() || "Dashboard";
     state.settings = {
+      language: LANGUAGES.some((l) => l.id === f.language.value) ? f.language.value : "auto",
       mode: f.mode.value,
       preset: f.preset.value,
       density: f.density.value === "compact" ? "compact" : "normal",
@@ -3072,19 +3161,19 @@ el.importInput.addEventListener("change", async () => {
   if (!file) return;
   try {
     const data = JSON.parse(await file.text());
-    if (!Array.isArray(data.widgets)) throw new Error("widgets がありません");
-    if (!confirm("今のダッシュボードを、読み込んだ内容で置き換えますか？")) return;
+    if (!Array.isArray(data.pages) && !Array.isArray(data.widgets)) throw new Error(t("settings.importNoWidgets"));
+    if (!confirm(t("settings.importConfirm"))) return;
     state = normalize(data);
     pickInitialPage();
     el.settingsDialog.close("imported");
     commit();
   } catch (err) {
-    alert(`読み込めませんでした: ${err.message}`);
+    alert(t("settings.importFailed", { message: err.message }));
   }
 });
 
 el.resetButton.addEventListener("click", async () => {
-  if (!confirm("すべてのウィジェットとリンクを消して、初期状態に戻しますか？\n（先に「書き出す」でバックアップを取ることをおすすめします）")) return;
+  if (!confirm(t("settings.resetConfirm"))) return;
   try {
     state = normalize(await storage.loadDefault());
     pickInitialPage();
@@ -3139,7 +3228,7 @@ function showSignedOut() {
 async function openDashboard(user) {
   currentEmail = user?.email || "";
   googleCache.clear();
-  setStatus("読み込み中…");
+  setStatus(t("common.loading"));
   try {
     const result = await storage.load();
     state = normalize(result.data);
@@ -3167,7 +3256,7 @@ async function openDashboard(user) {
   }
   if (storageMode === "local") {
     showBanner(
-      "Firebase が未設定のため「ローカルモード」で動いています。データはこのブラウザにだけ保存されます（README の手順 5）。",
+      t("banner.localMode"),
       "info",
     );
   } else {
@@ -3202,8 +3291,10 @@ async function init() {
   // ダッシュボードを開く直前にだけ待つ（起動を遅くしないため）
   const addonsReady = loadAddons();
 
-  // ログイン前も、前回選んだテーマで表示する
+  // ログイン前も、前回選んだテーマ・言語で表示する
   const appearance = storage.readAppearance();
+  setLanguage(appearance?.language);
+  onLanguageChanged();
   applySettings({ ...DEFAULT_SETTINGS, ...(appearance || {}) });
 
   if (!storage.isConfigured) {
@@ -3244,8 +3335,11 @@ init();
 let addonLoadError = "";
 
 /** 種類の表示名（知らない種類なら type をそのまま） */
+const ADDON_TYPE = "addon"; // WIDGET_TYPES での、アドオンの種類の印
+
 function typeName(type) {
-  return WIDGET_TYPES[type] || type;
+  if (WIDGET_TYPES[type] === ADDON_TYPE) return localized(addons.get(type)?.name) || type;
+  return WIDGET_TYPES[type] ? t(WIDGET_TYPES[type]) : type;
 }
 
 async function loadAddons() {
@@ -3253,22 +3347,34 @@ async function loadAddons() {
     await import("../addons/index.js");
   } catch (err) {
     console.error(err);
-    addonLoadError = `アドオンを読み込めませんでした（${err?.message || err}）。public/addons/ のファイルを確認してください。`;
+    addonLoadError = t("addon.loadFailed", { message: err?.message || err });
   }
   for (const def of addons.values()) {
     try {
       installAddon(def);
     } catch (err) {
       console.error(err);
-      addonLoadError = `アドオン「${def.type}」を組み込めませんでした（${err?.message || err}）`;
+      addons.delete(def.type);
+      addonLoadError = t("addon.installFailed", { type: def.type, message: err?.message || err });
     }
   }
+  renderAddonForm();
+}
+
+/** 編集画面に、アドオンの「種類」の選択肢と設定欄を（今の言語で）入れる */
+function renderAddonForm() {
+  const select = el.widgetForm.elements.type;
+  for (const option of [...select.options]) if (option.dataset.addon) option.remove();
+  const installed = [...addons.values()].filter((def) => WIDGET_TYPES[def.type] === ADDON_TYPE);
+  select.append(...installed.map((def) => h("option", { value: def.type, dataset: { addon: "1" } }, localized(def.name))));
+  $("#addon-fields").replaceChildren(...installed.flatMap((def) => def.fields.map((field) => renderAddonField(def.type, field))));
+  updateWidgetFormVisibility();
 }
 
 function installAddon(def) {
   const { type } = def;
-  if (WIDGET_TYPES[type]) throw new Error(`種類「${type}」は組み込みのウィジェットと同じ名前です`);
-  WIDGET_TYPES[type] = def.name;
+  if (WIDGET_TYPES[type]) throw new Error(t("addon.sameAsBuiltin", { type }));
+  WIDGET_TYPES[type] = ADDON_TYPE;
   if (ROW_OPTIONS.includes(def.defaultRows)) DEFAULT_ROWS[type] = def.defaultRows;
   if (def.minSize) {
     MIN_SIZE[type] = {
@@ -3278,9 +3384,7 @@ function installAddon(def) {
   }
   if (ROW_OPTIONS.includes(def.fixedRows)) FIXED_ROWS[type] = def.fixedRows;
 
-  // 編集画面：「種類」の選択肢と設定欄
-  el.widgetForm.elements.type.append(h("option", { value: type }, def.name));
-  $("#addon-fields").append(...def.fields.map((field) => renderAddonField(type, field)));
+  // 編集画面の「種類」の選択肢と設定欄は renderAddonForm() で作る（言語を変えたときも作り直す）
 
   // 設定欄の値の読み書き（組み込みのウィジェットと同じ WIDGET_FORMS の形）
   const control = (f, field) => f.namedItem(addonFieldName(type, field.name));
@@ -3349,25 +3453,25 @@ function addonFieldValue(field, value) {
 /** 編集画面の設定欄 1 つ */
 function renderAddonField(type, field) {
   const name = addonFieldName(type, field.name);
-  const label = field.label || field.name;
+  const label = localized(field.label) || field.name;
   if (field.type === "checkbox") {
     return h("label", { class: "checkbox", dataset: { forType: type } },
       h("input", { type: "checkbox", name }), label);
   }
   let input;
   if (field.type === "textarea") {
-    input = h("textarea", { class: "input", name, rows: field.rows || 4, placeholder: field.placeholder || null });
+    input = h("textarea", { class: "input", name, rows: field.rows || 4, placeholder: localized(field.placeholder) || null });
   } else if (field.type === "select") {
     input = h("select", { class: "input", name },
       ...(field.options || []).map((o) => (typeof o === "object"
-        ? h("option", { value: String(o.value) }, o.label ?? String(o.value))
+        ? h("option", { value: String(o.value) }, localized(o.label) || String(o.value))
         : h("option", { value: String(o) }, String(o)))));
   } else {
     input = h("input", {
       class: `input${field.type === "color" ? " input--color" : ""}`,
       type: field.type || "text",
       name,
-      placeholder: field.placeholder || null,
+      placeholder: localized(field.placeholder) || null,
       min: field.min ?? null,
       max: field.max ?? null,
       step: field.step ?? null,
@@ -3376,16 +3480,16 @@ function renderAddonField(type, field) {
   return h("label", { class: "field", dataset: { forType: type } },
     h("span", { class: "field__label" }, label),
     input,
-    field.hint ? h("span", { class: "field__hint" }, field.hint) : null,
+    field.hint ? h("span", { class: "field__hint" }, localized(field.hint)) : null,
   );
 }
 
 /** アドオンのウィジェットの中身。描く関数でエラーが起きても、ほかのウィジェットは表示し続ける */
 function renderAddonWidget(widget) {
   const def = addons.get(widget.type);
-  if (!def || WIDGET_TYPES[widget.type] !== def.name) {
+  if (!def || WIDGET_TYPES[widget.type] !== ADDON_TYPE) {
     return h("p", { class: "widget__empty" },
-      `アドオン「${widget.type}」が見つかりません。public/addons/index.js で読み込んでいるか確認してください（データは残っています）。`);
+      t("addon.missing", { type: widget.type }));
   }
   let root = null;
   const api = addonApi(widget, () => root);
@@ -3394,7 +3498,7 @@ function renderAddonWidget(widget) {
     if (root != null && !(root instanceof Node)) root = document.createTextNode(String(root));
   } catch (err) {
     console.error(err);
-    root = h("p", { class: "widget__empty" }, `アドオン「${widget.type}」でエラーが起きました：${err?.message || err}`);
+    root = h("p", { class: "widget__empty" }, t("addon.error", { type: widget.type, message: err?.message || err }));
   }
   return root;
 }
@@ -3402,7 +3506,10 @@ function renderAddonWidget(widget) {
 /** アドオンの render に渡す道具 */
 function addonApi(widget, getRoot) {
   return {
-    h, $, $$, uid, safeUrl,
+    h, $, $$, uid, safeUrl, t, localized,
+    /** 今の言語（"ja" / "en" …）と、日付・時刻の表示に使うロケール（"ja-JP" / "en-US" …） */
+    language: language(),
+    locale: locale(),
     /** 設定（テーマ・リンクを新しいタブで開くか など）。読み取り専用として使う */
     settings: state.settings,
     /** 編集モード中か */
