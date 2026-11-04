@@ -20,6 +20,9 @@ concurrency:
 
 jobs:
   deploy:
+    # テンプレートとして公開しているリポジトリ（本家）では動かさない。
+    # テンプレートから作ったあなたのリポジトリはテンプレート扱いではないので、ここは通常どおり動きます。
+    if: ${{ !github.event.repository.is_template }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
