@@ -14,37 +14,124 @@
       "name": "ホーム",
       "widgets": [
         {
-          "id": "clock",
-          "type": "clock",
-          "title": "いま",
+          "id": "0ae491f1",
+          "type": "worldclock",
+          "zones": [
+            {
+              "id": "japan",
+              "label": "日本",
+              "tz": "Asia/Tokyo"
+            }
+          ],
+          "title": "世界時計",
           "size": "s",
-          "timeZone": "",
           "rows": 1
         },
         {
           "id": "search",
           "type": "search",
           "title": "Web 検索",
-          "size": "l",
+          "size": "s",
           "searchUrl": "https://www.google.com/search?q=%s",
           "rows": 1
         },
         {
+          "id": "memo",
+          "type": "note",
+          "title": "メモ",
+          "size": "m",
+          "text": "",
+          "rows": 4,
+          "markdown": true
+        },
+        {
+          "id": "e79ac575",
+          "type": "mail",
+          "title": "",
+          "size": "s",
+          "rows": 1,
+          "label": "INBOX"
+        },
+        {
+          "id": "reading",
+          "type": "links",
+          "title": "あとで見る",
+          "size": "s",
+          "view": "list",
+          "items": [],
+          "rows": 3
+        },
+        {
+          "id": "f7aa206b",
+          "type": "calendar",
+          "title": "",
+          "size": "s",
+          "rows": 2,
+          "days": 3,
+          "allCalendars": true
+        },
+        {
           "id": "google",
           "type": "links",
-          "title": "Google",
-          "size": "m",
+          "title": "AI",
+          "size": "s",
           "view": "grid",
           "items": [
             {
-              "id": "gmail",
-              "title": "Gmail",
-              "url": "https://mail.google.com/"
+              "id": "0c6db456",
+              "url": "https://claude.ai/",
+              "title": "",
+              "icon": "",
+              "description": ""
             },
             {
-              "id": "calendar",
-              "title": "カレンダー",
-              "url": "https://calendar.google.com/"
+              "id": "4cf07983",
+              "url": "https://chatgpt.com/",
+              "title": "",
+              "icon": "",
+              "description": ""
+            },
+            {
+              "id": "18a8e175",
+              "url": "https://gemini.google.com/",
+              "title": "",
+              "icon": "",
+              "description": ""
+            },
+            {
+              "id": "f4304559",
+              "url": "https://notebook.google.com/",
+              "title": "",
+              "icon": "",
+              "description": ""
+            }
+          ],
+          "rows": 2
+        },
+        {
+          "id": "cb218473",
+          "type": "links",
+          "items": [
+            {
+              "id": "1246c5aa",
+              "url": "https://www.icloud.com/",
+              "title": "",
+              "icon": "",
+              "description": ""
+            },
+            {
+              "id": "a831bea5",
+              "url": "https://read.amazon.co.jp/kindle-library",
+              "title": "Kindle",
+              "icon": "",
+              "description": ""
+            },
+            {
+              "id": "ae26c282",
+              "url": "https://www.amazon.co.jp/",
+              "title": "",
+              "icon": "",
+              "description": ""
             },
             {
               "id": "drive",
@@ -67,82 +154,28 @@
               "url": "https://meet.google.com/"
             }
           ],
-          "rows": 2
-        },
-        {
-          "id": "todo",
-          "type": "todo",
-          "title": "ToDo",
-          "size": "m",
-          "categories": [
-            {
-              "id": "work",
-              "name": "仕事"
-            },
-            {
-              "id": "private",
-              "name": "プライベート"
-            }
-          ],
-          "items": [
-            {
-              "id": "t1",
-              "text": "ダッシュボードにリンクを追加する",
-              "done": false,
-              "categoryId": "work"
-            },
-            {
-              "id": "t2",
-              "text": "好きなテーマを選ぶ",
-              "done": false,
-              "categoryId": "private"
-            }
-          ],
-          "rows": 2
-        },
-        {
-          "id": "dev",
-          "type": "links",
-          "title": "開発",
+          "title": "Tools",
           "size": "s",
-          "view": "list",
-          "items": [
-            {
-              "id": "github",
-              "title": "GitHub",
-              "url": "https://github.com/",
-              "description": "リポジトリと Issue"
-            },
-            {
-              "id": "cloudflare",
-              "title": "Cloudflare",
-              "url": "https://dash.cloudflare.com/",
-              "description": "Workers / Access"
-            },
-            {
-              "id": "claude",
-              "title": "Claude",
-              "url": "https://claude.ai/"
-            }
-          ],
-          "rows": 2
+          "rows": 2,
+          "view": "grid"
         },
         {
-          "id": "reading",
+          "id": "a79856a0",
           "type": "links",
-          "title": "あとで見る",
-          "size": "s",
-          "view": "list",
           "items": [],
-          "rows": 2
+          "title": "フォルダ",
+          "size": "s",
+          "rows": 2,
+          "view": "list"
         },
         {
-          "id": "memo",
-          "type": "note",
-          "title": "メモ",
-          "size": "m",
-          "text": "",
-          "rows": 2
+          "id": "46e3a8c4",
+          "type": "links",
+          "items": [],
+          "title": "ドキュメント",
+          "size": "s",
+          "rows": 2,
+          "view": "grid"
         }
       ]
     }
