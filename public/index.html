@@ -23,12 +23,12 @@
     <div class="app-header__inner">
       <h1 class="app-header__title" id="dashboard-title">Dashboard</h1>
 
-      <div class="app-header__search">
+      <div class="app-header__search" id="header-search" hidden>
         <input type="search" id="filter" class="input input--search"
                placeholder="リンクを絞り込む（/ キー）" aria-label="リンクを絞り込む" autocomplete="off">
       </div>
 
-      <div class="app-header__actions">
+      <div class="app-header__actions" id="header-actions" hidden>
         <span class="save-status" id="save-status" role="status" aria-live="polite"></span>
         <button type="button" class="button" id="edit-toggle" aria-pressed="false">
           <span class="button__icon" aria-hidden="true">✎</span><span class="button__label">編集</span>
@@ -40,10 +40,22 @@
 
   <div class="banner" id="banner" hidden></div>
 
+  <!-- ログイン画面（Firebase の設定が済んでいて、ログインしていないとき） -->
+  <section class="signin" id="signin" hidden>
+    <div class="signin__card">
+      <h2 class="signin__title">ログイン</h2>
+      <p class="signin__text">Google アカウントでログインすると、あなたのダッシュボードが表示されます。</p>
+      <button type="button" class="button button--primary button--large" id="signin-button">
+        Google でログイン
+      </button>
+    </div>
+  </section>
+
   <main class="dashboard" id="dashboard" aria-live="polite"></main>
 
   <footer class="app-footer">
     <span id="user-email"></span>
+    <button type="button" class="button button--small button--ghost" id="signout-button" hidden>ログアウト</button>
   </footer>
 
   <!-- ウィジェットの追加・編集 -->

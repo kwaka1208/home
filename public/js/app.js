@@ -46,6 +46,11 @@ const el = {
   saveStatus: $("#save-status"),
   banner: $("#banner"),
   userEmail: $("#user-email"),
+  headerSearch: $("#header-search"),
+  headerActions: $("#header-actions"),
+  signin: $("#signin"),
+  signinButton: $("#signin-button"),
+  signoutButton: $("#signout-button"),
   widgetDialog: $("#widget-dialog"),
   widgetForm: $("#widget-form"),
   widgetDelete: $("#widget-delete"),
@@ -171,6 +176,7 @@ function scheduleSave() {
 async function saveNow() {
   clearTimeout(saveTimer);
   saveTimer = null;
+  if (!state) return;
   setStatus("保存中…");
   try {
     await storage.save(state, storageMode);
@@ -206,8 +212,10 @@ function applySettings(settings = state.settings) {
   else delete el.root.dataset.preset;
   if (density === "compact") el.root.dataset.density = density;
   else delete el.root.dataset.density;
-  el.title.textContent = state.title || "Dashboard";
-  document.title = state.title || "Dashboard";
+  if (state) {
+    el.title.textContent = state.title || "Dashboard";
+    document.title = state.title || "Dashboard";
+  }
 }
 
 function render() {
@@ -786,36 +794,104 @@ el.resetButton.addEventListener("click", async () => {
 
 el.editToggle.addEventListener("click", () => setEditing(!editing));
 
-async function init() {
+/** ログイン前・読み込み失敗時：ダッシュボードを隠して、編集できないようにする */
+function showSignedOut() {
+  clearInterval(clockTimer);
+  if (editing) setEditing(false);
+  state = null;
+  el.dashboard.replaceChildren();
+  el.headerSearch.hidden = true;
+  el.headerActions.hidden = true;
+  el.userEmail.textContent = "";
+  el.signoutButton.hidden = true;
+  el.title.textContent = "Dashboard";
+  document.title = "Dashboard";
+}
+
+/** データを読み込んでダッシュボードを表示する */
+async function openDashboard(user) {
   setStatus("読み込み中…");
   try {
     const result = await storage.load();
     state = normalize(result.data);
     storageMode = result.mode;
-    if (storageMode === "local") {
-      showBanner(
-        "サーバーに保存できないため、このブラウザにだけ保存しています。" +
-          (result.warning ? `（${result.warning}）` : ""),
-        "info",
-      );
-    }
-    setStatus(storageMode === "remote" ? "" : "ローカル保存");
   } catch (err) {
-    // 認証エラーや設定漏れ。データを上書きしないよう読み取り専用で初期表示もしない
-    setStatus("読み込めませんでした", "error");
+    // 許可がない・設定漏れなど。データを上書きしないよう、画面は出さない
+    showSignedOut();
+    if (user) {
+      el.userEmail.textContent = user.email;
+      el.signoutButton.hidden = false;
+    }
     showBanner(err.message);
-    el.editToggle.disabled = true;
-    el.settingsOpen.disabled = true;
     return;
   }
 
-  render();
-  clockTimer = setInterval(updateClocks, 1000);
-
-  if (storageMode === "remote") {
-    const email = await storage.fetchUser();
-    if (email) el.userEmail.textContent = email;
+  el.signin.hidden = true;
+  el.headerSearch.hidden = false;
+  el.headerActions.hidden = false;
+  el.editToggle.disabled = false;
+  el.settingsOpen.disabled = false;
+  if (user) {
+    el.userEmail.textContent = user.email;
+    el.signoutButton.hidden = false;
   }
+  if (storageMode === "local") {
+    showBanner(
+      "Firebase が未設定のため「ローカルモード」で動いています。データはこのブラウザにだけ保存されます（README の手順 5）。",
+      "info",
+    );
+  } else {
+    showBanner("");
+  }
+  setStatus("");
+  render();
+  clearInterval(clockTimer);
+  clockTimer = setInterval(updateClocks, 1000);
+}
+
+el.signinButton.addEventListener("click", async () => {
+  el.signinButton.disabled = true;
+  showBanner("");
+  try {
+    await storage.signIn();
+  } catch (err) {
+    showBanner(err.message);
+  } finally {
+    el.signinButton.disabled = false;
+  }
+});
+
+el.signoutButton.addEventListener("click", async () => {
+  if (saveTimer) await saveNow();
+  await storage.signOut();
+});
+
+async function init() {
+  // ログイン前も、前回選んだテーマで表示する
+  const appearance = storage.readAppearance();
+  applySettings({ ...DEFAULT_SETTINGS, ...(appearance || {}) });
+
+  if (!storage.isConfigured) {
+    await openDashboard(null);
+    return;
+  }
+
+  setStatus("");
+  try {
+    await storage.initFirebase();
+  } catch (err) {
+    showBanner(err.message);
+    return;
+  }
+  storage.watchUser((user) => {
+    if (user) {
+      el.signin.hidden = true;
+      openDashboard(user);
+    } else {
+      showSignedOut();
+      el.signin.hidden = false;
+    }
+  });
 }
 
 init();

@@ -1,0 +1,42 @@
+rules_version = '2';
+
+// Firestore のセキュリティルール
+//
+// 下の allowedEmails() の中を、ログインを許可する Google アカウントのメールアドレスに
+// 書き換えてから、Firebase コンソールの「Firestore Database → ルール」に
+// このファイルの内容をすべて貼り付けて「公開」してください（README の手順 4）。
+//
+// - メールアドレスは小文字で書いてください
+// - 複数の人に使わせる場合は ['a@gmail.com', 'b@gmail.com'] のようにカンマで区切ります
+//   （データは人ごとに別々に保存され、他の人のデータは読めません）
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function allowedEmails() {
+      return ['you@example.com'];
+    }
+
+    // ログインしていて、本人のドキュメントで、許可したメールアドレスであること
+    function isOwner(uid) {
+      return request.auth != null
+        && request.auth.uid == uid
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in allowedEmails();
+    }
+
+    // 保存する内容の形と大きさを確認する
+    function isValidDashboard() {
+      return request.resource.data.keys().hasOnly(['json', 'updatedAt'])
+        && request.resource.data.json is string
+        && request.resource.data.json.size() < 500000
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /dashboards/{uid} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && isValidDashboard();
+    }
+
+    // これ以外の場所は、すべて読み書き禁止
+  }
+}

@@ -1,5 +1,0 @@
-# ローカル開発（npm run dev）用の設定。
-# このファイルを .dev.vars という名前でコピーして使います。
-# localhost からのアクセスを、このメールアドレスでログインしているものとして扱います。
-# ※ 本番の Cloudflare には絶対に設定しないでください（localhost 以外では無視されます）。
-DEV_AUTH_EMAIL=you@example.com
