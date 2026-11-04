@@ -10,11 +10,36 @@ export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly
 /** Gmail のラベルと件数を読むための権限（メールの本文や件名は読めない） */
 export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.labels";
 
+import { firebaseConfig } from "./firebase-config.js";
+
+/** API ごとの名前と、Google Cloud での識別名（有効にする画面のリンクに使う） */
+const APIS = {
+  "www.googleapis.com": { name: "Google Calendar API", service: "calendar-json.googleapis.com" },
+  "gmail.googleapis.com": { name: "Gmail API", service: "gmail.googleapis.com" },
+};
+
 export class GoogleApiError extends Error {
-  constructor(message, { expired = false } = {}) {
+  /**
+   * @param {string} message
+   * @param {{ expired?: boolean, link?: { label: string, url: string } }} options
+   *   link があれば、エラーの下に「◯◯を開く」リンクとして表示する
+   */
+  constructor(message, { expired = false, link = null } = {}) {
     super(message);
     this.expired = expired;
+    this.link = link;
   }
+}
+
+/** 「API が有効になっていない」エラーから、有効にする画面の URL を決める */
+function activationUrl(body, service) {
+  // Google のエラーには、プロジェクト番号つきの正確なリンクが入っていることが多い
+  for (const detail of body?.error?.details || []) {
+    const url = detail?.metadata?.activationUrl;
+    if (typeof url === "string" && /^https:\/\/console\.(developers|cloud)\.google\.com\//.test(url)) return url;
+  }
+  const project = encodeURIComponent(firebaseConfig.projectId || "");
+  return `https://console.cloud.google.com/apis/library/${service}?project=${project}`;
 }
 
 async function call(url, token) {
@@ -28,8 +53,9 @@ async function call(url, token) {
 
   let reason = "";
   let message = "";
+  let body = null;
   try {
-    const body = await res.json();
+    body = await res.json();
     message = body?.error?.message || "";
     reason = body?.error?.errors?.[0]?.reason || body?.error?.details?.[0]?.reason || "";
   } catch { /* 本文なし */ }
@@ -38,7 +64,11 @@ async function call(url, token) {
     throw new GoogleApiError("Google との連携の有効期限が切れました。", { expired: true });
   }
   if (res.status === 403 && /accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(`${reason} ${message}`)) {
-    throw new GoogleApiError("Google Cloud でこの API が有効になっていません（README の「カレンダーとメールのウィジェット」を参照）。");
+    const api = APIS[new URL(url).hostname] || { name: "この API", service: "" };
+    throw new GoogleApiError(
+      `Google Cloud で「${api.name}」が有効になっていません。下のリンクから「有効にする」を押し、数分待ってから ↻ で読み込み直してください。`,
+      { link: api.service ? { label: `${api.name} を有効にする画面を開く ↗`, url: activationUrl(body, api.service) } : null },
+    );
   }
   if (res.status === 403 && /insufficient|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(`${reason} ${message}`)) {
     throw new GoogleApiError("必要な権限が許可されていません。連携し直して、確認画面のチェックを入れてください。", { expired: true });
