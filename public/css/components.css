@@ -351,6 +351,45 @@
   [data-editing] .widget__tools { display: inline-flex; }
   [data-editing] .widget { outline: 1px dashed var(--color-text-muted); outline-offset: 3px; }
 
+  /* 大きさを変える角（編集中・タイル表示のときだけ） */
+  .widget__resize { display: none; }
+  :root[data-editing]:not([data-layout="flow"]) .widget { position: relative; }
+  :root[data-editing]:not([data-layout="flow"]) .widget__resize {
+    display: block;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    width: 22px;
+    height: 22px;
+    cursor: nwse-resize;
+    touch-action: none;
+    /* 右下の角に斜めの線を 2 本 */
+    background:
+      linear-gradient(135deg, transparent 0 55%, var(--color-text-muted) 55% 61%, transparent 61% 72%,
+        var(--color-text-muted) 72% 78%, transparent 78%);
+    border-bottom-right-radius: inherit;
+    opacity: 0.7;
+  }
+  :root[data-editing] .widget__resize:hover,
+  .widget.is-resizing .widget__resize { opacity: 1; }
+  .widget--search .widget__resize,
+  .widget--mail .widget__resize { cursor: ew-resize; } /* 高さは 1 段で固定 */
+  .widget.is-resizing { box-shadow: var(--shadow-raised); }
+  .widget__resize-badge {
+    position: absolute;
+    right: var(--space-2);
+    bottom: 26px;
+    z-index: 3;
+    padding: 2px var(--space-2);
+    border-radius: var(--button-radius);
+    background: var(--color-text);
+    color: var(--color-bg);
+    font-size: var(--font-size-xs);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
   /* ドラッグ中の見た目（SortableJS が付けるクラス） */
   .is-ghost { opacity: 0.35; }
   .is-chosen { box-shadow: var(--shadow-raised); }
@@ -571,6 +610,13 @@
 
   /* ---------- Web 検索 ---------- */
   .web-search { display: flex; gap: var(--space-2); }
+  /* Web 検索は高さ 1 段で固定。検索欄を本文の上下中央に置く */
+  .widget--search .widget__body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-top: 0;
+  }
 
   /* ---------- 埋め込み ---------- */
   /* タイル表示：ウィジェットの高さいっぱいに表示（YouTube はプレーヤー側で黒帯を付けて収める） */
@@ -742,13 +788,27 @@
   }
   .cal-event__meet { flex: none; }
 
-  /* メールは 1 段に収まるよう、更新ボタンを右上に重ね、件数とラベルを横に並べる */
-  .widget--mail .widget__body { position: relative; }
-  .widget--mail .google-toolbar {
-    position: absolute;
-    top: 0;
-    right: var(--widget-padding);
-    margin: 0;
+  /*
+   * メールは高さ 1 段で固定。更新ボタンは見出しの右に置き、件数とラベルを横に並べて、
+   * 本文の中で上下中央に置く（連携のお願い・期限切れのお知らせも 1 段に収まる短さにしている）
+   */
+  .widget--mail .widget__body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-top: 0;
+  }
+  .widget--mail .google-connect { gap: var(--space-1); }
+  /* 中身に合わせる表示では、上下中央にそろえる必要がないので余白を元に戻す */
+  [data-layout="flow"] .widget--mail .widget__body,
+  [data-layout="flow"] .widget--search .widget__body { padding-top: var(--space-2); }
+  .widget--mail .google-connect .widget__empty { padding: 0; }
+  .google-widget--compact { gap: var(--space-1); }
+  .google-widget--compact .google-expired { flex-wrap: nowrap; padding-block: 2px; }
+  .google-widget--compact .google-expired > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .mail {
     display: grid;
@@ -865,9 +925,10 @@
   .timer-fields label[hidden] { display: none; }
 
   /* ---------- 世界時計 ---------- */
+  /* 1 段（タイル 1 つ分の高さ）に 2 都市が収まるよう、行の高さを詰めている */
   .wclock {
     display: grid;
-    gap: var(--space-1);
+    gap: 0;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -878,10 +939,12 @@
     grid-template-areas: "icon label time" "icon diff time";
     align-items: center;
     column-gap: var(--space-2);
-    padding: var(--space-1) 0;
+    padding: 2px 0;
+    line-height: 1.25;
     border-bottom: var(--border-width) solid var(--color-border);
   }
   .wclock__row:last-child { border-bottom: 0; }
+  .widget--worldclock .widget__body { padding-top: var(--space-1); } /* フォントの違いで溢れないよう余裕を持たせる */
   .wclock__icon { grid-area: icon; font-size: 1.2rem; }
   .wclock__label { grid-area: label; font-weight: var(--font-weight-bold); font-size: var(--font-size-sm); }
   .wclock__diff { grid-area: diff; color: var(--color-text-muted); font-size: var(--font-size-xs); }
@@ -889,6 +952,7 @@
     grid-area: time;
     font-family: var(--clock-font);
     font-size: 1.6rem;
+    line-height: 1.1;
     font-weight: var(--clock-weight);
     font-variant-numeric: tabular-nums;
     color: var(--clock-color);
