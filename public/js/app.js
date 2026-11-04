@@ -15,7 +15,10 @@
  *     { "id": "...", "type": "note",   "title": "...", "size": "s", "text": "" },
  *     { "id": "...", "type": "clock",  "title": "...", "size": "s", "timeZone": "" },
  *     { "id": "...", "type": "search", "title": "...", "size": "m", "searchUrl": "https://www.google.com/search?q=%s" },
- *     { "id": "...", "type": "embed",  "title": "...", "size": "l", "embedUrl": "https://...", "height": 400 }
+ *     { "id": "...", "type": "embed",  "title": "...", "size": "l", "embedUrl": "https://...", "height": 400 },
+ *     { "id": "...", "type": "todo",   "title": "...", "size": "m",
+ *       "categories": [ { "id": "...", "name": "仕事" } ],
+ *       "items": [ { "id": "...", "text": "...", "done": false, "categoryId": "..." } ] }
  *   ]
  * }
  */
@@ -28,7 +31,9 @@ const WIDGET_TYPES = {
   clock: "時計",
   search: "Web 検索",
   embed: "埋め込み",
+  todo: "ToDo",
 };
+const DEFAULT_TODO_CATEGORIES = ["仕事", "プライベート"];
 const SIZES = ["s", "m", "l", "xl"];
 const DEFAULT_SETTINGS = { mode: "auto", preset: "", density: "normal", openInNewTab: true, useFavicons: true };
 const DEFAULT_SEARCH_URL = "https://www.google.com/search?q=%s";
@@ -63,6 +68,9 @@ const el = {
   exportButton: $("#export-button"),
   importInput: $("#import-input"),
   resetButton: $("#reset-button"),
+  textDialog: $("#text-dialog"),
+  textForm: $("#text-form"),
+  toast: $("#toast"),
 };
 
 let state = null;
@@ -71,6 +79,10 @@ let editing = false;
 let sortables = [];
 let saveTimer = null;
 let clockTimer = null;
+/** ToDo ウィジェットごとに選んでいるカテゴリー（保存しない表示状態） */
+const todoFilters = new Map();
+/** 描き直したあとにフォーカスを戻す要素のセレクター */
+let focusAfterRender = null;
 
 /* ================================================================== */
 /* ユーティリティ                                                       */
@@ -146,6 +158,20 @@ function normalize(data) {
       widget.items = (Array.isArray(w.items) ? w.items : [])
         .filter((item) => item && safeUrl(item.url))
         .map((item) => ({ ...item, id: item.id ? String(item.id) : uid() }));
+    }
+    if (widget.type === "todo") {
+      widget.categories = (Array.isArray(w.categories) ? w.categories : [])
+        .filter((c) => c && typeof c.name === "string")
+        .map((c) => ({ id: c.id ? String(c.id) : uid(), name: c.name }));
+      const categoryIds = new Set(widget.categories.map((c) => c.id));
+      widget.items = (Array.isArray(w.items) ? w.items : [])
+        .filter((item) => item && typeof item.text === "string" && categoryIds.has(String(item.categoryId)))
+        .map((item) => ({
+          id: item.id ? String(item.id) : uid(),
+          text: item.text,
+          done: Boolean(item.done),
+          categoryId: String(item.categoryId),
+        }));
     }
     out.widgets.push(widget);
   }
@@ -238,6 +264,10 @@ function render() {
   setupSortables();
   applyFilter();
   updateClocks();
+  if (focusAfterRender) {
+    $(focusAfterRender)?.focus();
+    focusAfterRender = null;
+  }
 }
 
 function renderWidget(widget) {
@@ -260,6 +290,17 @@ function renderWidget(widget) {
         title: "リンクを追加",
         "aria-label": "リンクを追加",
         onclick: () => openLinkDialog(widget.id, null),
+      }, "＋"),
+    );
+  }
+  if (widget.type === "todo") {
+    tools.append(
+      h("button", {
+        type: "button",
+        class: "button button--small button--ghost",
+        title: "カテゴリーを追加",
+        "aria-label": "カテゴリーを追加",
+        onclick: () => addTodoCategory(widget),
       }, "＋"),
     );
   }
@@ -291,6 +332,7 @@ function renderWidgetBody(widget) {
     case "clock": return renderClock(widget);
     case "search": return renderSearch(widget);
     case "embed": return renderEmbed(widget);
+    case "todo": return renderTodo(widget);
     default: return null;
   }
 }
@@ -304,7 +346,7 @@ function renderLinks(widget) {
     list.append(renderLinkItem(widget, item));
   }
   if (widget.items.length === 0 && !editing) {
-    return h("p", { class: "widget__empty" }, "リンクがありません");
+    return h("p", { class: "widget__empty" }, "リンクがありません。ブラウザのアドレスバーから URL をここにドラッグすると追加できます");
   }
   return list;
 }
@@ -441,6 +483,310 @@ function renderEmbed(widget) {
 }
 
 /* ================================================================== */
+/* ToDo                                                                 */
+/* ================================================================== */
+
+function renderTodo(widget) {
+  const cats = widget.categories;
+  const wrap = h("div", { class: "todo" });
+  if (cats.length === 0) {
+    wrap.append(h("p", { class: "widget__empty" },
+      editing ? "見出しの「＋」でカテゴリーを追加してください" : "カテゴリーがありません。「編集」からカテゴリーを追加できます"));
+    return wrap;
+  }
+
+  // 編集モードでは並べ替えのため、すべてのカテゴリーを表示する
+  let filter = editing ? "all" : todoFilters.get(widget.id) || "all";
+  if (filter !== "all" && !cats.some((c) => c.id === filter)) filter = "all";
+
+  // 追加フォーム
+  const input = h("input", {
+    class: "input todo__input",
+    type: "text",
+    placeholder: "ToDo を追加",
+    "aria-label": "ToDo の内容",
+    maxlength: "200",
+    "data-todo-input": widget.id,
+  });
+  const select = h("select", { class: "input todo__select", "aria-label": "カテゴリー" },
+    ...cats.map((c) => h("option", { value: c.id }, c.name)));
+  select.value = filter !== "all"
+    ? filter
+    : cats.some((c) => c.id === widget.lastCategoryId) ? widget.lastCategoryId : cats[0].id;
+  if (cats.length === 1) select.hidden = true;
+  const form = h("form", { class: "todo__form" },
+    input, select, h("button", { class: "button button--primary", type: "submit" }, "追加"));
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    widget.items.push({ id: uid(), text, done: false, categoryId: select.value });
+    widget.lastCategoryId = select.value;
+    focusAfterRender = `[data-todo-input="${widget.id}"]`;
+    commit();
+  });
+  wrap.append(form);
+
+  // カテゴリーの絞り込み
+  if (!editing && cats.length > 1) {
+    const chip = (id, label, count) => h("button", {
+      type: "button",
+      class: "todo-chip",
+      "aria-pressed": String(filter === id),
+      onclick: () => { todoFilters.set(widget.id, id); render(); },
+    }, label, count ? h("span", { class: "todo-chip__count" }, count) : null);
+    const remaining = (id) => widget.items.filter((i) => !i.done && (id === "all" || i.categoryId === id)).length;
+    wrap.append(h("div", { class: "todo__chips", role: "group", "aria-label": "カテゴリーで絞り込む" },
+      chip("all", "すべて", remaining("all")),
+      ...cats.map((c) => chip(c.id, c.name, remaining(c.id))),
+    ));
+  }
+
+  // カテゴリーごとの一覧
+  const shown = filter === "all" ? cats : cats.filter((c) => c.id === filter);
+  const groups = h("div", { class: "todo__groups", dataset: { widgetId: widget.id } });
+  for (const cat of shown) {
+    const items = widget.items.filter((i) => i.categoryId === cat.id);
+    const left = items.filter((i) => !i.done).length;
+    const list = h("ul", { class: "todo-list", dataset: { categoryId: cat.id } },
+      ...items.map((item) => renderTodoItem(widget, item)));
+    groups.append(h("section", { class: "todo-group", dataset: { categoryId: cat.id } },
+      h("header", { class: "todo-group__header" },
+        h("span", { class: "todo-group__handle", title: "ドラッグでカテゴリーを並べ替え", "aria-hidden": "true" }, "⠿"),
+        h("span", { class: "todo-group__name" }, cat.name),
+        h("span", { class: "todo-group__count", title: "未完了 / 全体" }, `${left}/${items.length}`),
+        h("span", { class: "todo-group__tools" },
+          h("button", {
+            type: "button",
+            class: "button button--small button--ghost",
+            "aria-label": `カテゴリー「${cat.name}」の名前を変える`,
+            title: "名前を変える",
+            onclick: () => renameTodoCategory(widget, cat),
+          }, "✎"),
+          h("button", {
+            type: "button",
+            class: "button button--small button--ghost button--danger",
+            "aria-label": `カテゴリー「${cat.name}」を削除`,
+            title: "カテゴリーを削除",
+            onclick: () => deleteTodoCategory(widget, cat),
+          }, "×"),
+        ),
+      ),
+      list,
+      items.length === 0 && !editing ? h("p", { class: "todo-group__empty" }, "ToDo はありません") : null,
+    ));
+  }
+  wrap.append(groups);
+
+  // 完了したものの一括削除
+  const shownIds = new Set(shown.map((c) => c.id));
+  const doneCount = widget.items.filter((i) => i.done && shownIds.has(i.categoryId)).length;
+  if (doneCount > 0) {
+    wrap.append(h("div", { class: "todo__footer" },
+      h("button", {
+        type: "button",
+        class: "button button--small button--ghost",
+        onclick: () => {
+          widget.items = widget.items.filter((i) => !(i.done && shownIds.has(i.categoryId)));
+          commit();
+        },
+      }, `完了した ${doneCount} 件を削除`),
+    ));
+  }
+  return wrap;
+}
+
+function renderTodoItem(widget, item) {
+  const check = h("input", {
+    type: "checkbox",
+    class: "todo-item__check",
+    checked: item.done,
+    "aria-label": `${item.text} を完了にする`,
+  });
+  check.addEventListener("change", () => {
+    item.done = check.checked;
+    commit();
+  });
+  const text = h("span", { class: "todo-item__text" }, item.text);
+  const label = h("label", { class: "todo-item__label" }, check, text);
+  // 編集モードでは、文字をクリックすると書き直せる
+  label.addEventListener("click", async (event) => {
+    if (!editing || event.target === check) return;
+    event.preventDefault();
+    const value = await askText({ title: "ToDo を編集", label: "内容", value: item.text });
+    if (value) {
+      item.text = value;
+      commit();
+    }
+  });
+  return h("li", { class: `todo-item${item.done ? " todo-item--done" : ""}`, dataset: { id: item.id } },
+    label,
+    h("button", {
+      type: "button",
+      class: "button button--small button--ghost todo-item__delete",
+      "aria-label": `${item.text} を削除`,
+      title: "削除",
+      onclick: () => {
+        widget.items = widget.items.filter((i) => i.id !== item.id);
+        commit();
+      },
+    }, "×"),
+  );
+}
+
+async function addTodoCategory(widget) {
+  const name = await askText({ title: "カテゴリーを追加", label: "カテゴリー名", value: "" });
+  if (!name) return;
+  widget.categories.push({ id: uid(), name });
+  commit();
+}
+
+async function renameTodoCategory(widget, cat) {
+  const name = await askText({ title: "カテゴリーの名前を変える", label: "カテゴリー名", value: cat.name });
+  if (!name) return;
+  cat.name = name;
+  commit();
+}
+
+function deleteTodoCategory(widget, cat) {
+  const count = widget.items.filter((i) => i.categoryId === cat.id).length;
+  const extra = count ? `\n（このカテゴリーの ToDo ${count} 件も消えます）` : "";
+  if (!confirm(`カテゴリー「${cat.name}」を削除しますか？${extra}`)) return;
+  widget.categories = widget.categories.filter((c) => c.id !== cat.id);
+  widget.items = widget.items.filter((i) => i.categoryId !== cat.id);
+  commit();
+}
+
+/* ================================================================== */
+/* 1 行の文字を入力してもらうダイアログ                                   */
+/* ================================================================== */
+
+function askText({ title, label, value }) {
+  const input = el.textForm.elements.text;
+  $("#text-dialog-title").textContent = title;
+  $("#text-dialog-label").textContent = label;
+  input.value = value || "";
+  el.textDialog.returnValue = "";
+  el.textDialog.showModal();
+  input.select();
+  return new Promise((resolve) => {
+    el.textDialog.addEventListener("close", () => {
+      resolve(el.textDialog.returnValue === "ok" ? input.value.trim() || null : null);
+    }, { once: true });
+  });
+}
+
+/* ================================================================== */
+/* アドレスバーなどからのリンクのドロップ                                 */
+/* ================================================================== */
+
+let internalDrag = false; // このページの中で始まったドラッグは対象外
+let toastTimer = null;
+
+function showToast(message, action) {
+  clearTimeout(toastTimer);
+  el.toast.replaceChildren(h("span", {}, message));
+  if (action) {
+    el.toast.append(h("button", {
+      type: "button",
+      class: "button button--small",
+      onclick: () => { el.toast.hidden = true; action.run(); },
+    }, action.label));
+  }
+  el.toast.hidden = false;
+  toastTimer = setTimeout(() => { el.toast.hidden = true; }, 4000);
+}
+
+function hasLinkData(dataTransfer) {
+  const types = [...(dataTransfer?.types || [])];
+  if (types.includes("Files")) return false;
+  return types.includes("text/uri-list") || types.includes("text/x-moz-url") || types.includes("text/plain");
+}
+
+/** ドロップされたデータから URL とページ名を取り出す */
+function readDroppedLink(dataTransfer) {
+  let url = null;
+  let title = "";
+  // Firefox：「URL 改行 ページ名」
+  const moz = dataTransfer.getData("text/x-moz-url");
+  if (moz) {
+    const [u, t] = moz.split(/\r?\n/);
+    url = safeUrl(u);
+    title = (t || "").trim();
+  }
+  if (!url) {
+    const uri = dataTransfer.getData("text/uri-list")
+      .split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith("#"));
+    url = safeUrl(uri || "");
+  }
+  // ページ名は HTML（<a href="...">ページ名</a>）に入っていることがある
+  const html = dataTransfer.getData("text/html");
+  if (html) {
+    const a = new DOMParser().parseFromString(html, "text/html").querySelector("a[href]");
+    if (a) {
+      url = url || safeUrl(a.getAttribute("href"));
+      if (!title) title = a.textContent.trim();
+    }
+  }
+  if (!url) url = safeUrl(dataTransfer.getData("text/plain"));
+  if (!url) return null;
+  if (title === url || safeUrl(title)) title = "";
+  return { url, title: title.slice(0, 80) };
+}
+
+function setDropTarget(widgetEl) {
+  for (const node of $$(".widget.is-drop-target", el.dashboard)) {
+    if (node !== widgetEl) node.classList.remove("is-drop-target");
+  }
+  widgetEl?.classList.add("is-drop-target");
+}
+
+document.addEventListener("dragstart", () => { internalDrag = true; });
+document.addEventListener("dragend", () => { internalDrag = false; setDropTarget(null); });
+
+document.addEventListener("dragover", (event) => {
+  if (internalDrag || !state || !hasLinkData(event.dataTransfer)) return;
+  if (event.target.closest?.("input, textarea, dialog")) return; // 入力欄への文字のドロップはそのまま
+  // ページ外へ移動してしまわないよう、どこでも既定の動作は止める
+  event.preventDefault();
+  const target = event.target.closest?.(".widget--links") || null;
+  event.dataTransfer.dropEffect = target ? "copy" : "none";
+  setDropTarget(target);
+});
+
+document.addEventListener("dragleave", (event) => {
+  if (!event.relatedTarget) setDropTarget(null); // ウィンドウの外に出た
+});
+
+document.addEventListener("drop", (event) => {
+  if (internalDrag || !state || !hasLinkData(event.dataTransfer)) return;
+  if (event.target.closest?.("input, textarea, dialog")) return;
+  event.preventDefault();
+  setDropTarget(null);
+  const target = event.target.closest?.(".widget--links");
+  const widget = target && state.widgets.find((w) => w.id === target.dataset.id);
+  if (!widget) return;
+
+  const link = readDroppedLink(event.dataTransfer);
+  if (!link) {
+    showToast("URL を読み取れませんでした");
+    return;
+  }
+  const name = widget.title || "リンク集";
+  if (widget.items.some((i) => safeUrl(i.url) === link.url)) {
+    showToast(`「${name}」にはすでに登録されています`);
+    return;
+  }
+  const item = { id: uid(), url: link.url, title: link.title, icon: "", description: "" };
+  widget.items.push(item);
+  commit();
+  showToast(`「${link.title || hostname(link.url)}」を「${name}」に追加しました`, {
+    label: "名前を編集",
+    run: () => openLinkDialog(widget.id, item.id),
+  });
+});
+
+/* ================================================================== */
 /* ドラッグ＆ドロップ（編集モードのみ）                                   */
 /* ================================================================== */
 
@@ -497,6 +843,42 @@ function setupSortables() {
         commit();
       },
     }));
+  }
+
+  // ToDo：カテゴリーの並べ替え
+  for (const groups of $$(".todo__groups", el.dashboard)) {
+    const widget = state.widgets.find((w) => w.id === groups.dataset.widgetId);
+    if (!widget) continue;
+    sortables.push(new Sortable(groups, {
+      ...common,
+      handle: ".todo-group__handle",
+      draggable: ".todo-group",
+      onEnd: () => {
+        const order = $$(".todo-group", groups).map((n) => n.dataset.categoryId);
+        widget.categories.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+        commit();
+      },
+    }));
+    // ToDo の並べ替え（同じウィジェットのカテゴリー間で移動も可）
+    for (const list of $$(".todo-list", groups)) {
+      sortables.push(new Sortable(list, {
+        ...common,
+        group: `todo-${widget.id}`,
+        draggable: ".todo-item",
+        filter: "input, button",
+        preventOnFilter: false,
+        onEnd: () => {
+          const byId = new Map(widget.items.map((i) => [i.id, i]));
+          widget.items = $$(".todo-list", groups).flatMap((listEl) =>
+            $$(".todo-item", listEl).map((n) => {
+              const item = byId.get(n.dataset.id);
+              if (item) item.categoryId = listEl.dataset.categoryId;
+              return item;
+            }).filter(Boolean));
+          commit();
+        },
+      }));
+    }
   }
 }
 
@@ -597,6 +979,10 @@ el.widgetDialog.addEventListener("close", () => {
     widget = { id: uid(), type: f.type.value };
     if (widget.type === "links") widget.items = [];
     if (widget.type === "note") widget.text = "";
+    if (widget.type === "todo") {
+      widget.categories = DEFAULT_TODO_CATEGORIES.map((name) => ({ id: uid(), name }));
+      widget.items = [];
+    }
     state.widgets.push(widget);
   }
   widget.title = f.title.value.trim();
@@ -617,7 +1003,8 @@ el.widgetDialog.addEventListener("close", () => {
 el.widgetDelete.addEventListener("click", () => {
   const widget = state.widgets.find((w) => w.id === editingWidgetId);
   if (!widget) return;
-  const extra = widget.type === "links" && widget.items.length ? `（リンク ${widget.items.length} 件も消えます）` : "";
+  const extra = widget.type === "links" && widget.items.length ? `（リンク ${widget.items.length} 件も消えます）`
+    : widget.type === "todo" && widget.items.length ? `（ToDo ${widget.items.length} 件も消えます）` : "";
   if (!confirm(`「${widget.title || WIDGET_TYPES[widget.type]}」を削除しますか？${extra}`)) return;
   state.widgets = state.widgets.filter((w) => w.id !== editingWidgetId);
   el.widgetDialog.close("deleted");
