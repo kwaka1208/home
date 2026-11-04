@@ -11,7 +11,10 @@
   "pages": [
     {
       "id": "home",
-      "name": "ホーム",
+      "name": {
+        "ja": "ホーム",
+        "en": "Home"
+      },
       "widgets": [
         {
           "id": "0ae491f1",
@@ -19,18 +22,27 @@
           "zones": [
             {
               "id": "japan",
-              "label": "日本",
+              "label": {
+                "ja": "日本",
+                "en": "Japan"
+              },
               "tz": "Asia/Tokyo"
             }
           ],
-          "title": "世界時計",
+          "title": {
+            "ja": "世界時計",
+            "en": "World clock"
+          },
           "size": "s",
           "rows": 1
         },
         {
           "id": "search",
           "type": "search",
-          "title": "Web 検索",
+          "title": {
+            "ja": "Web 検索",
+            "en": "Web search"
+          },
           "size": "s",
           "searchUrl": "https://www.google.com/search?q=%s",
           "rows": 1
@@ -38,7 +50,10 @@
         {
           "id": "memo",
           "type": "note",
-          "title": "メモ",
+          "title": {
+            "ja": "メモ",
+            "en": "Notes"
+          },
           "size": "m",
           "text": "",
           "rows": 4,
@@ -55,7 +70,10 @@
         {
           "id": "reading",
           "type": "links",
-          "title": "あとで見る",
+          "title": {
+            "ja": "あとで見る",
+            "en": "Read later"
+          },
           "size": "s",
           "view": "list",
           "items": [],
@@ -135,17 +153,26 @@
             },
             {
               "id": "drive",
-              "title": "ドライブ",
+              "title": {
+                "ja": "ドライブ",
+                "en": "Drive"
+              },
               "url": "https://drive.google.com/"
             },
             {
               "id": "docs",
-              "title": "ドキュメント",
+              "title": {
+                "ja": "ドキュメント",
+                "en": "Documents"
+              },
               "url": "https://docs.google.com/document/"
             },
             {
               "id": "sheets",
-              "title": "スプレッドシート",
+              "title": {
+                "ja": "スプレッドシート",
+                "en": "Sheets"
+              },
               "url": "https://docs.google.com/spreadsheets/"
             },
             {
@@ -163,7 +190,10 @@
           "id": "a79856a0",
           "type": "links",
           "items": [],
-          "title": "フォルダ",
+          "title": {
+            "ja": "フォルダ",
+            "en": "Folders"
+          },
           "size": "s",
           "rows": 2,
           "view": "list"
@@ -172,7 +202,10 @@
           "id": "46e3a8c4",
           "type": "links",
           "items": [],
-          "title": "ドキュメント",
+          "title": {
+            "ja": "ドキュメント",
+            "en": "Documents"
+          },
           "size": "s",
           "rows": 2,
           "view": "grid"

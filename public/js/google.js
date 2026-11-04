@@ -10,6 +10,7 @@ export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly
 /** Gmail のラベルと件数を読むための権限（メールの本文や件名は読めない） */
 export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.labels";
 
+import { t } from "./i18n.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 /** API ごとの名前と、Google Cloud での識別名（有効にする画面のリンクに使う） */
@@ -47,7 +48,7 @@ async function call(url, token) {
   try {
     res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   } catch {
-    throw new GoogleApiError("Google に接続できません。ネットワークを確認してください。");
+    throw new GoogleApiError(t("googleApi.network"));
   }
   if (res.ok) return res.json();
 
@@ -61,19 +62,19 @@ async function call(url, token) {
   } catch { /* 本文なし */ }
 
   if (res.status === 401) {
-    throw new GoogleApiError("Google との連携の有効期限が切れました。", { expired: true });
+    throw new GoogleApiError(t("googleApi.expired"), { expired: true });
   }
   if (res.status === 403 && /accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled/i.test(`${reason} ${message}`)) {
-    const api = APIS[new URL(url).hostname] || { name: "この API", service: "" };
+    const api = APIS[new URL(url).hostname] || { name: t("googleApi.thisApi"), service: "" };
     throw new GoogleApiError(
-      `Google Cloud で「${api.name}」が有効になっていません。下のリンクから「有効にする」を押し、数分待ってから ↻ で読み込み直してください。`,
-      { link: api.service ? { label: `${api.name} を有効にする画面を開く ↗`, url: activationUrl(body, api.service) } : null },
+      t("googleApi.disabled", { api: api.name }),
+      { link: api.service ? { label: t("googleApi.enableLink", { api: api.name }), url: activationUrl(body, api.service) } : null },
     );
   }
   if (res.status === 403 && /insufficient|ACCESS_TOKEN_SCOPE_INSUFFICIENT/i.test(`${reason} ${message}`)) {
-    throw new GoogleApiError("必要な権限が許可されていません。連携し直して、確認画面のチェックを入れてください。", { expired: true });
+    throw new GoogleApiError(t("googleApi.scope"), { expired: true });
   }
-  throw new GoogleApiError(`Google の API でエラーが発生しました（${res.status}${message ? `：${message}` : ""}）`);
+  throw new GoogleApiError(message ? t("googleApi.errorMessage", { status: res.status, message }) : t("googleApi.error", { status: res.status }));
 }
 
 /**
@@ -117,7 +118,7 @@ export async function fetchCalendarEvents(token, { days = 3, allCalendars = true
         const parse = (t) => (t?.dateTime ? new Date(t.dateTime) : new Date(`${t?.date}T00:00:00`));
         return {
           id: `${cal.id}:${ev.id}`,
-          title: ev.summary || "（タイトルなし）",
+          title: ev.summary || t("googleApi.noTitle"),
           start: parse(ev.start),
           end: parse(ev.end),
           allDay,

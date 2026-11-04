@@ -23,7 +23,7 @@ const TYPE_PATTERN = /^[a-z][a-z0-9-]{1,30}$/;
  *
  * @param {object} def
  * @param {string} def.type        種類の名前（英小文字・数字・ハイフン。保存データの "type" になる）
- * @param {string} def.name        編集画面の「種類」に出す名前
+ * @param {string | Record<string, string>} def.name  編集画面の「種類」に出す名前。言語ごとに変えるなら { ja: "…", en: "…" }
  * @param {(widget: object, api: object) => Node | null} def.render  ウィジェットの中身を作って返す
  * @param {Array<object>} [def.fields]   編集画面の設定欄（WIDGET.md の「設定欄」）
  * @param {number} [def.defaultRows]     新しく追加したときの高さ（1〜4 段。省略時 2）
@@ -38,7 +38,9 @@ export function registerWidget(def) {
   if (!TYPE_PATTERN.test(String(type))) {
     throw new Error(`registerWidget：type「${type}」は英小文字・数字・ハイフンで 2〜31 文字にしてください`);
   }
-  if (typeof name !== "string" || !name.trim()) throw new Error(`registerWidget（${type}）：name を指定してください`);
+  const validName = (typeof name === "string" && name.trim())
+    || (name && typeof name === "object" && Object.values(name).some((v) => typeof v === "string" && v.trim()));
+  if (!validName) throw new Error(`registerWidget（${type}）：name を指定してください（文字列か { ja: "…", en: "…" }）`);
   if (typeof render !== "function") throw new Error(`registerWidget（${type}）：render 関数を指定してください`);
   if (addons.has(type)) throw new Error(`registerWidget：type「${type}」はすでに登録されています`);
   const fields = Array.isArray(def.fields) ? def.fields : [];
