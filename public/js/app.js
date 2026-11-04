@@ -362,6 +362,13 @@ function renderTabs() {
           "aria-label": `タブ「${p.name}」の名前を変える`,
           onclick: () => renamePage(p),
         }, "✎"),
+        h("button", {
+          type: "button",
+          class: "button button--small button--ghost",
+          title: "タブを複製",
+          "aria-label": `タブ「${p.name}」を複製`,
+          onclick: () => duplicatePage(p),
+        }, "⧉"),
         state.pages.length > 1 ? h("button", {
           type: "button",
           class: "button button--small button--ghost button--danger",
@@ -373,10 +380,31 @@ function renderTabs() {
     );
     list.append(item);
   }
+  // 「＋ タブを追加」は、いちばん右のタブのすぐ右に置く
   el.tabs.replaceChildren(list);
   if (editing) {
     el.tabs.append(h("button", { type: "button", class: "tabs__add", onclick: addPage }, "＋ タブを追加"));
   }
+}
+
+/**
+ * タブを複製する。ウィジェットは中身ごとコピーし、ID だけ新しくする
+ * （タイマーの状態や読み込みの控えなど、ウィジェットの ID で区別しているものが混ざらないように）。
+ * 複製したタブは元のタブのすぐ右に入れて、開く。
+ */
+function duplicatePage(p) {
+  const names = new Set(state.pages.map((x) => x.name));
+  let name = `${p.name} のコピー`;
+  for (let n = 2; names.has(name); n += 1) name = `${p.name} のコピー ${n}`;
+  const copy = {
+    id: uid(),
+    name,
+    widgets: JSON.parse(JSON.stringify(p.widgets)).map((w) => ({ ...w, id: uid() })),
+  };
+  state.pages.splice(state.pages.findIndex((x) => x.id === p.id) + 1, 0, copy);
+  scheduleSave();
+  switchPage(copy.id);
+  showToast(`タブ「${p.name}」を複製しました`);
 }
 
 /** 矢印キーでタブを移動（WAI-ARIA のタブの操作） */
