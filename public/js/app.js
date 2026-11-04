@@ -8,9 +8,11 @@
  * {
  *   "version": 1,
  *   "title": "Dashboard",
- *   "settings": { "mode": "auto", "preset": "", "density": "normal", "openInNewTab": true, "useFavicons": true },
+ *   "settings": { "mode": "auto", "preset": "", "density": "normal", "layout": "tile",
+ *                 "openInNewTab": true, "useFavicons": true },
  *   "widgets": [
- *     { "id": "...", "type": "links", "title": "...", "size": "m", "view": "list",
+ *     （各ウィジェットは "rows": 1〜4 で高さ（段数）を持つ。省略時は種類ごとの初期値）
+ *     { "id": "...", "type": "links", "title": "...", "size": "m", "rows": 2, "view": "list",
  *       "accent": "#2f6f5e", "items": [ { "id": "...", "title": "...", "url": "...", "icon": "", "description": "" } ] },
  *     { "id": "...", "type": "note",   "title": "...", "size": "s", "text": "" },
  *     { "id": "...", "type": "clock",  "title": "...", "size": "s", "timeZone": "" },
@@ -35,8 +37,23 @@ const WIDGET_TYPES = {
   todo: "ToDo",
 };
 const DEFAULT_TODO_CATEGORIES = ["仕事", "プライベート"];
+/** ウィジェットの高さ（段数）の選択肢と、種類ごとの初期値 */
+const ROW_OPTIONS = [1, 2, 3, 4];
+const DEFAULT_ROWS = { links: 2, note: 2, clock: 1, search: 1, embed: 2, todo: 3 };
+
+function normalizeRows(value, type) {
+  const rows = Number(value);
+  return ROW_OPTIONS.includes(rows) ? rows : DEFAULT_ROWS[type] || 2;
+}
 const SIZES = ["s", "m", "l", "xl"];
-const DEFAULT_SETTINGS = { mode: "auto", preset: "", density: "normal", openInNewTab: true, useFavicons: true };
+const DEFAULT_SETTINGS = {
+  mode: "auto",
+  preset: "",
+  density: "normal",
+  layout: "tile", // "tile"：段で高さを指定してタイル状に並べる / "flow"：中身の高さに合わせる
+  openInNewTab: true,
+  useFavicons: true,
+};
 const DEFAULT_SEARCH_URL = "https://www.google.com/search?q=%s";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -146,6 +163,8 @@ function normalize(data) {
     out.settings.density = "compact";
   }
   if (!THEME_PRESETS.some((p) => p.id === out.settings.preset)) out.settings.preset = "";
+  if (out.settings.layout !== "flow") out.settings.layout = "tile";
+  delete out.settings.alignRows; // 旧バージョンの設定（layout に置き換え）
   for (const w of Array.isArray(data?.widgets) ? data.widgets : []) {
     if (!w || !WIDGET_TYPES[w.type]) continue;
     const widget = {
@@ -153,6 +172,7 @@ function normalize(data) {
       id: w.id ? String(w.id) : uid(),
       title: typeof w.title === "string" ? w.title : "",
       size: SIZES.includes(w.size) ? w.size : "m",
+      rows: normalizeRows(w.rows, w.type),
     };
     if (widget.type === "links") {
       widget.view = widget.view === "grid" ? "grid" : "list";
@@ -232,7 +252,9 @@ window.addEventListener("beforeunload", (event) => {
 /* ================================================================== */
 
 function applySettings(settings = state.settings) {
-  const { mode, preset, density } = settings;
+  const { mode, preset, density, layout } = settings;
+  if (layout === "flow") el.root.dataset.layout = "flow";
+  else delete el.root.dataset.layout;
   if (mode === "light" || mode === "dark") el.root.dataset.mode = mode;
   else delete el.root.dataset.mode;
   if (preset) el.root.dataset.preset = preset;
@@ -275,7 +297,7 @@ function renderWidget(widget) {
   const style = isHexColor(widget.accent) ? { "--widget-accent": widget.accent } : {};
   const section = h("section", {
     class: `widget widget--${widget.type}`,
-    dataset: { id: widget.id, size: widget.size, type: widget.type },
+    dataset: { id: widget.id, size: widget.size, rows: String(widget.rows), type: widget.type },
     "data-accent": isHexColor(widget.accent) ? "" : null,
     "aria-label": widget.title || WIDGET_TYPES[widget.type],
   });
@@ -488,15 +510,17 @@ function renderEmbed(widget) {
     return h("p", { class: "widget__empty" },
       "埋め込む URL（https://…）を設定してください。YouTube の URL もそのまま貼れます。編集中でなくても、URL をここにドラッグして設定できます");
   }
-  return h("iframe", {
+  const frame = h("iframe", {
     class: "embed",
     src: url,
     title: widget.title || "埋め込み",
     loading: "lazy",
     referrerpolicy: "no-referrer",
     sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",
-    style: { height: `${Math.min(Math.max(Number(widget.height) || 400, 120), 1600)}px` },
   });
+  // 高さはタイル表示では段に合わせ、「中身に合わせる」表示のときだけこの値を使う
+  frame.style.setProperty("--embed-height", `${Math.min(Math.max(Number(widget.height) || 400, 120), 1600)}px`);
+  return frame;
 }
 
 /* ================================================================== */
@@ -985,6 +1009,7 @@ function openWidgetDialog(widgetId) {
   f.type.disabled = Boolean(widget); // 種類は作成時のみ選べる
   f.title.value = widget?.title ?? "";
   f.size.value = widget?.size || "m";
+  f.rows.value = String(widget?.rows || DEFAULT_ROWS[f.type.value] || 2);
   f.useAccent.checked = isHexColor(widget?.accent);
   f.accent.value = isHexColor(widget?.accent) ? widget.accent : "#2f6f5e";
   f.view.value = widget?.view || "list";
@@ -1000,6 +1025,13 @@ function openWidgetDialog(widgetId) {
 
 el.widgetForm.elements.accent.addEventListener("input", () => {
   el.widgetForm.elements.useAccent.checked = true;
+});
+
+// 新しく追加するときは、種類を変えたら高さ（段数）もその種類の初期値にする
+el.widgetForm.elements.type.addEventListener("change", () => {
+  if (!editingWidgetId) {
+    el.widgetForm.elements.rows.value = String(DEFAULT_ROWS[el.widgetForm.elements.type.value] || 2);
+  }
 });
 
 el.widgetDialog.addEventListener("close", () => {
@@ -1018,6 +1050,7 @@ el.widgetDialog.addEventListener("close", () => {
   }
   widget.title = f.title.value.trim();
   widget.size = SIZES.includes(f.size.value) ? f.size.value : "m";
+  widget.rows = normalizeRows(f.rows.value, widget.type);
   if (f.useAccent.checked && isHexColor(f.accent.value)) widget.accent = f.accent.value;
   else delete widget.accent;
 
@@ -1139,17 +1172,24 @@ el.settingsOpen.addEventListener("click", () => {
   f.mode.value = state.settings.mode;
   f.preset.value = state.settings.preset;
   f.density.value = state.settings.density;
+  f.layout.value = state.settings.layout;
   f.openInNewTab.checked = state.settings.openInNewTab;
   f.useFavicons.checked = state.settings.useFavicons;
   el.settingsDialog.returnValue = "";
   el.settingsDialog.showModal();
 });
 
-// 配色・テーマ・表示密度は選んだ時点で画面に反映して見せる（保存はまだ）
+// 配色・テーマ・表示密度・レイアウトは選んだ時点で画面に反映して見せる（保存はまだ）
 el.settingsForm.addEventListener("change", (event) => {
-  if (!["mode", "preset", "density"].includes(event.target.name)) return;
+  if (!["mode", "preset", "density", "layout"].includes(event.target.name)) return;
   const f = el.settingsForm.elements;
-  applySettings({ ...state.settings, mode: f.mode.value, preset: f.preset.value, density: f.density.value });
+  applySettings({
+    ...state.settings,
+    mode: f.mode.value,
+    preset: f.preset.value,
+    density: f.density.value,
+    layout: f.layout.value,
+  });
 });
 
 el.settingsDialog.addEventListener("close", () => {
@@ -1160,6 +1200,7 @@ el.settingsDialog.addEventListener("close", () => {
       mode: f.mode.value,
       preset: f.preset.value,
       density: f.density.value === "compact" ? "compact" : "normal",
+      layout: f.layout.value === "flow" ? "flow" : "tile",
       openInNewTab: f.openInNewTab.checked,
       useFavicons: f.useFavicons.checked,
     };

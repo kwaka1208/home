@@ -230,9 +230,24 @@
   .widget__tools { display: none; gap: var(--space-1); }
 
   .widget__body {
-    padding: var(--space-2) var(--widget-padding) var(--widget-padding);
+    flex: 1 1 auto; /* 見出しを除いた残りの高さは本文が受け持つ */
     min-width: 0;
+    min-height: 0;
+    padding: var(--space-2) var(--widget-padding) var(--widget-padding);
+    overflow: auto; /* タイル表示で段に収まらないときは、ウィジェットの中だけスクロール */
+    overscroll-behavior: contain;
   }
+  [data-layout="flow"] .widget__body { overflow: visible; }
+
+  /* メモ欄と埋め込みは、ウィジェットの高さいっぱいまで広げる */
+  .widget--note .widget__body,
+  .widget--embed .widget__body {
+    display: flex;
+    flex-direction: column;
+  }
+  .widget--note .note,
+  .widget--embed .embed { flex: 1 1 auto; }
+  .widget--embed .widget__body { overflow: hidden; }
 
   .widget__empty {
     color: var(--color-text-muted);
@@ -252,7 +267,7 @@
 
   .widget-add {
     grid-column: span 1;
-    min-height: 120px;
+    min-height: 0;
     border: 2px dashed var(--color-border);
     border-radius: var(--widget-radius);
     background: transparent;
@@ -374,7 +389,7 @@
   .note {
     display: block;
     width: 100%;
-    min-height: 140px;
+    min-height: 0;
     padding: var(--space-2);
     border: var(--border-width) solid transparent;
     border-radius: var(--link-radius);
@@ -384,9 +399,11 @@
     resize: vertical;
   }
   .note:focus { border-color: var(--color-focus); outline: none; }
+  [data-layout="flow"] .note { min-height: 140px; resize: vertical; }
+  :root:not([data-layout="flow"]) .note { resize: none; } /* 高さは段で決まるので、手で伸ばせないようにする */
 
   /* ---------- 時計 ---------- */
-  .clock { display: grid; gap: var(--space-1); padding: var(--space-2) 0; }
+  .clock { display: grid; gap: var(--space-1); padding: var(--space-1) 0 0; }
   .clock__time {
     font-family: var(--clock-font);
     font-size: var(--font-size-clock);
@@ -402,26 +419,28 @@
   .web-search { display: flex; gap: var(--space-2); }
 
   /* ---------- 埋め込み ---------- */
+  /* タイル表示：ウィジェットの高さいっぱいに表示（YouTube はプレーヤー側で黒帯を付けて収める） */
   .embed {
     display: block;
     width: 100%;
+    height: 100%;
+    min-height: 0;
     border: 0;
     border-radius: var(--link-radius);
     background: var(--note-bg);
   }
-  /* YouTube：幅に合わせて 16:9（ショート動画は縦長）で表示 */
-  .embed--video {
-    height: auto;
-    aspect-ratio: 16 / 9;
-    background: #000;
-  }
+  .embed--video { background: #000; }
   .embed--vertical {
     width: auto;
     max-width: 100%;
-    height: min(70vh, 640px);
     margin-inline: auto;
     aspect-ratio: 9 / 16;
   }
+
+  /* 中身に合わせる表示：埋め込みは設定した高さ、YouTube は幅に合わせて 16:9 */
+  [data-layout="flow"] .embed { flex: none; height: var(--embed-height, 400px); }
+  [data-layout="flow"] .embed--video { height: auto; aspect-ratio: 16 / 9; }
+  [data-layout="flow"] .embed--vertical { height: min(70vh, 640px); aspect-ratio: 9 / 16; }
 
   /* ---------- リンクのドロップ ---------- */
   .widget.is-drop-target {

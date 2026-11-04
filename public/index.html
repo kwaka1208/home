@@ -91,6 +91,16 @@
       </label>
 
       <label class="field">
+        <span class="field__label">高さ（タイル表示のとき）</span>
+        <select class="input" name="rows">
+          <option value="1">1 段</option>
+          <option value="2">2 段</option>
+          <option value="3">3 段</option>
+          <option value="4">4 段</option>
+        </select>
+      </label>
+
+      <label class="field">
         <span class="field__label">アクセントカラー（任意）</span>
         <span class="field__row">
           <input class="input input--color" type="color" name="accent">
@@ -117,7 +127,7 @@
         <span class="field__hint" id="embed-url-hint" hidden>YouTube の動画として埋め込みます。高さは幅に合わせて自動で決まります。</span>
       </label>
       <label class="field" data-for-type="embed" id="embed-height-field">
-        <span class="field__label">高さ（px）</span>
+        <span class="field__label">高さ（px。設定の「ウィジェットの高さ」が「中身に合わせる」のときに使います）</span>
         <input class="input" name="height" type="number" min="120" max="1600" step="10">
       </label>
 
@@ -211,6 +221,13 @@
         <select class="input" name="density">
           <option value="normal">標準</option>
           <option value="compact">コンパクト（余白を詰める）</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="field__label">ウィジェットの高さ</span>
+        <select class="input" name="layout">
+          <option value="tile">タイル（各ウィジェットの「高さ（段）」でマス目にそろえる）</option>
+          <option value="flow">中身に合わせる（段の指定を使わない）</option>
         </select>
       </label>
       <label class="checkbox">

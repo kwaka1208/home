@@ -68,17 +68,32 @@
 
     display: grid;
     grid-template-columns: repeat(var(--grid-columns), minmax(0, 1fr));
+    /* タイル表示：1 段の高さを固定し、ウィジェットは data-rows の段数ぶんの高さになる */
+    grid-auto-rows: var(--grid-row-height);
     gap: var(--grid-gap);
-    align-items: start;
+    align-items: stretch;
     max-width: var(--page-max-width);
     margin: 0 auto;
     padding: var(--space-2) var(--page-gutter) var(--space-6);
   }
 
+  /* 幅（列数） */
   .dashboard > [data-size="s"]  { grid-column: span var(--span-s); }
   .dashboard > [data-size="m"]  { grid-column: span var(--span-m); }
   .dashboard > [data-size="l"]  { grid-column: span var(--span-l); }
   .dashboard > [data-size="xl"] { grid-column: 1 / -1; }
+
+  /* 高さ（段数） */
+  .dashboard > [data-rows="2"] { grid-row: span 2; }
+  .dashboard > [data-rows="3"] { grid-row: span 3; }
+  .dashboard > [data-rows="4"] { grid-row: span 4; }
+
+  /* 設定で「中身に合わせる」を選んだとき：段の指定を使わず、中身の高さで並べる */
+  [data-layout="flow"] .dashboard {
+    grid-auto-rows: auto;
+    align-items: start;
+  }
+  [data-layout="flow"] .dashboard > [data-rows] { grid-row: auto; }
 
   /* 中くらいの画面：2 列 */
   @media (max-width: 1080px) {
