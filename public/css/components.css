@@ -1345,4 +1345,19 @@
     border-radius: var(--button-radius);
     background: var(--color-accent);
   }
+
+  /* ---------- 世界時計の設定欄 ---------- */
+  .zone-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .zone-list__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto;
+    align-items: center;
+    gap: var(--space-2);
+  }
 }
