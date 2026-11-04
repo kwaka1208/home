@@ -72,3 +72,34 @@ export function toYouTubeEmbed(raw) {
   const path = id ? `embed/${id}` : "embed/videoseries";
   return { src: `https://www.youtube-nocookie.com/${path}?${params}`, vertical };
 }
+
+/**
+ * 写真ウィジェットに貼られた URL を、<img> で表示できる画像の URL に変換する。
+ * - Google ドライブの共有リンク（https://drive.google.com/file/d/ID/view など）
+ *   → https://lh3.googleusercontent.com/d/ID（「リンクを知っている全員」に公開したファイルのみ表示できる）
+ * - Dropbox の共有リンク（?dl=0）→ ?raw=1
+ * - それ以外の http(s) の URL はそのまま
+ * http(s) でなければ null。
+ */
+export function toImageUrl(raw) {
+  let url;
+  try {
+    url = new URL(String(raw).trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  const host = url.hostname.toLowerCase();
+
+  if (host === "drive.google.com" || host === "docs.google.com") {
+    const m = url.pathname.match(/\/file\/d\/([\w-]+)/);
+    const id = m ? m[1] : url.searchParams.get("id");
+    if (id && /^[\w-]+$/.test(id)) return `https://lh3.googleusercontent.com/d/${id}`;
+  }
+  if (host === "www.dropbox.com" || host === "dropbox.com") {
+    url.searchParams.delete("dl");
+    url.searchParams.set("raw", "1");
+    return url.href;
+  }
+  return url.href;
+}
