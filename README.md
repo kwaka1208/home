@@ -34,6 +34,12 @@ Google アカウントでログインした本人だけが、中身を見たり�
 
 ---
 
+## 自作ウィジェットを作る
+
+ウィジェットの仕組みと、自分でウィジェットを追加する手順（例：カウントダウン）は **[WIDGET.md](WIDGET.md)** にまとめています。
+
+---
+
 ## バグ報告・要望・コメント
 
 不具合の報告、機能の要望、感想などは、本家リポジトリの **[Issues](https://github.com/kwaka1208/personal-dashboard/issues)** に書いてください。
@@ -333,6 +339,7 @@ public/                      GitHub Pages で公開されるファイル
 README.md                    セットアップ（このファイル）
 USAGE.md                     使い方（操作方法・ウィジェットごとの説明）
 DESIGN.md                    見た目のカスタマイズ（CSS 変数・クラス名・テーマの作り方）
+WIDGET.md                    ウィジェットの仕組みと、自作ウィジェットの作り方
 firestore.rules              Firestore のセキュリティルール（コンソールに貼り付ける見本）
 firebase.json                エミュレーター用の設定
 .github/workflows/pages.yml  public/ を GitHub Pages に公開する設定
