@@ -24,6 +24,7 @@
  */
 import { THEME_PRESETS, FAVICON_URL, SAVE_DELAY_MS } from "./config.js";
 import * as storage from "./storage.js";
+import { toYouTubeEmbed } from "./embed.js";
 
 const WIDGET_TYPES = {
   links: "リンク集",
@@ -467,9 +468,25 @@ function renderSearch(widget) {
 }
 
 function renderEmbed(widget) {
+  // YouTube の URL は、そのまま貼れば埋め込み用のプレーヤーに変換する
+  const youtube = toYouTubeEmbed(widget.embedUrl || "");
+  if (youtube) {
+    return h("iframe", {
+      class: `embed embed--video${youtube.vertical ? " embed--vertical" : ""}`,
+      src: youtube.src,
+      title: widget.title || "YouTube 動画",
+      loading: "lazy",
+      // YouTube は参照元の情報がないと再生できない（エラー 153）ため、送る設定にする
+      referrerpolicy: "strict-origin-when-cross-origin",
+      allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
+      allowfullscreen: true,
+    });
+  }
+
   const url = safeUrl(widget.embedUrl || "");
   if (!url || !/^https:/.test(url)) {
-    return h("p", { class: "widget__empty" }, "埋め込む URL（https://…）を設定してください");
+    return h("p", { class: "widget__empty" },
+      "埋め込む URL（https://…）を設定してください。YouTube の URL もそのまま貼れます。編集中でなくても、URL をここにドラッグして設定できます");
   }
   return h("iframe", {
     class: "embed",
@@ -749,7 +766,7 @@ document.addEventListener("dragover", (event) => {
   if (event.target.closest?.("input, textarea, dialog")) return; // 入力欄への文字のドロップはそのまま
   // ページ外へ移動してしまわないよう、どこでも既定の動作は止める
   event.preventDefault();
-  const target = event.target.closest?.(".widget--links") || null;
+  const target = event.target.closest?.(".widget--links, .widget--embed") || null;
   event.dataTransfer.dropEffect = target ? "copy" : "none";
   setDropTarget(target);
 });
@@ -763,13 +780,22 @@ document.addEventListener("drop", (event) => {
   if (event.target.closest?.("input, textarea, dialog")) return;
   event.preventDefault();
   setDropTarget(null);
-  const target = event.target.closest?.(".widget--links");
+  const target = event.target.closest?.(".widget--links, .widget--embed");
   const widget = target && state.widgets.find((w) => w.id === target.dataset.id);
   if (!widget) return;
 
   const link = readDroppedLink(event.dataTransfer);
   if (!link) {
     showToast("URL を読み取れませんでした");
+    return;
+  }
+  // 埋め込みウィジェット：表示する URL を差し替える
+  if (widget.type === "embed") {
+    const previous = widget.embedUrl;
+    widget.embedUrl = link.url;
+    commit();
+    showToast(toYouTubeEmbed(link.url) ? "YouTube 動画を埋め込みました" : "埋め込む URL を変更しました",
+      previous ? { label: "元に戻す", run: () => { widget.embedUrl = previous; commit(); } } : null);
     return;
   }
   const name = widget.title || "リンク集";
@@ -941,8 +967,13 @@ function updateWidgetFormVisibility() {
   for (const field of $$("[data-for-type]", el.widgetForm)) {
     field.hidden = field.dataset.forType !== type;
   }
+  // YouTube の URL なら高さは自動なので、入力欄を隠して説明を出す
+  const isYouTube = type === "embed" && Boolean(toYouTubeEmbed(el.widgetForm.elements.embedUrl.value));
+  $("#embed-url-hint").hidden = !isYouTube;
+  if (isYouTube) $("#embed-height-field").hidden = true;
 }
 el.widgetForm.elements.type.addEventListener("change", updateWidgetFormVisibility);
+el.widgetForm.elements.embedUrl.addEventListener("input", updateWidgetFormVisibility);
 
 function openWidgetDialog(widgetId) {
   editingWidgetId = widgetId;

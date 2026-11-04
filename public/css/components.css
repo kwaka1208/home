@@ -91,6 +91,7 @@
 
   .field { display: grid; gap: var(--space-1); }
   .field__label { font-size: var(--font-size-sm); color: var(--color-text-muted); }
+  .field__hint { font-size: var(--font-size-xs); color: var(--color-accent); }
   .field__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 
   .fieldset {
@@ -407,6 +408,19 @@
     border: 0;
     border-radius: var(--link-radius);
     background: var(--note-bg);
+  }
+  /* YouTube：幅に合わせて 16:9（ショート動画は縦長）で表示 */
+  .embed--video {
+    height: auto;
+    aspect-ratio: 16 / 9;
+    background: #000;
+  }
+  .embed--vertical {
+    width: auto;
+    max-width: 100%;
+    height: min(70vh, 640px);
+    margin-inline: auto;
+    aspect-ratio: 9 / 16;
   }
 
   /* ---------- リンクのドロップ ---------- */

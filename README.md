@@ -4,7 +4,7 @@
 Google アカウントでログインした本人だけが、中身を見たり編集したりできます。
 
 - 画面のレイアウトはドラッグ＆ドロップで自由に並べ替え
-- リンク集・ToDo（カテゴリー別）・メモ・時計・Web 検索・埋め込み（Google カレンダーなど）の 6 種類のウィジェット
+- リンク集・ToDo（カテゴリー別）・メモ・時計・Web 検索・埋め込み（YouTube・Google カレンダーなど）の 6 種類のウィジェット
 - ブラウザのアドレスバーから URL をドラッグ＆ドロップするだけでリンクを追加
 - 編集内容は Firebase（Cloud Firestore）に自動保存されるので、PC でもスマホでも同じ画面
 - 見た目はテーマで切り替え、CSS 変数（デザイントークン）で丸ごと着せ替えも可能
@@ -214,7 +214,7 @@ Google Cloud で OAuth クライアントを作る必要はありません（Fir
 | メモ | 自由に書けるメモ欄。入力すると自動保存 |
 | 時計 | 現在時刻と日付。タイムゾーン（例：`America/New_York`）も指定可能 |
 | Web 検索 | 検索 URL を変えれば Google 以外（社内 Wiki、GitHub 検索など）にも使えます |
-| 埋め込み | Google カレンダーの埋め込み URL など、iframe で表示できるページ |
+| 埋め込み | YouTube の動画・プレイリスト、Google カレンダーの埋め込み URL など。下の「YouTube を埋め込む」を参照 |
 
 幅は S（1 列）・M（2 列）・L（3 列）・XL（全幅）から選べます。
 画面が狭くなると、自動で 2 列 → 1 列に詰まります。
@@ -232,6 +232,29 @@ Google Cloud で OAuth クライアントを作る必要はありません（Fir
 
 ページ名が取れない場合はドメイン名で登録されます。同じ URL がすでにあるウィジェットには追加されません。
 ウィンドウを左右に並べておくと、ドラッグしやすくなります。
+
+### YouTube を埋め込む
+
+YouTube の URL は、埋め込みウィジェットにそのまま貼るだけで動画プレーヤーとして表示されます。
+「共有」ボタンの埋め込みコード（`<iframe ...>`）を探す必要はありません。
+
+1. 編集中に **＋ ウィジェットを追加** を押し、種類で **埋め込み** を選びます。
+2. 「埋め込む URL」に、ブラウザのアドレスバーや「共有」でコピーした YouTube の URL を貼ります。
+3. **保存** を押すと、幅に合わせた 16:9 のプレーヤーになります（高さの指定は不要です）。
+
+すでにある埋め込みウィジェットに、アドレスバーから YouTube の URL をドラッグ＆ドロップして差し替えることもできます
+（間違えたときは、画面下の **元に戻す** で戻せます）。
+
+| 貼れる URL の例 | 表示 |
+|---|---|
+| `https://www.youtube.com/watch?v=...` / `https://youtu.be/...` | 動画 |
+| `https://www.youtube.com/watch?v=...&t=90s` / `https://youtu.be/...?t=1m30s` | 指定した時刻から再生 |
+| `https://www.youtube.com/playlist?list=...`、`watch?v=...&list=...` | プレイリスト |
+| `https://www.youtube.com/shorts/...` | ショート動画（縦長で表示） |
+| `https://www.youtube.com/live/...` | ライブ配信 |
+
+埋め込みにはプライバシー強化モード（`youtube-nocookie.com`。再生するまで Cookie を使わない）を使います。
+動画の投稿者が埋め込みを許可していない場合は、YouTube 側のエラーが表示されます。
 
 ### ToDo の使い方
 
@@ -398,6 +421,7 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | `.link-list--list`, `.link-list--grid` | リンクのリスト表示 / タイル表示 |
 | `.link`, `.link__icon`, `.link__title`, `.link__desc` | リンク 1 件 |
 | `.note`, `.clock__time`, `.clock__date`, `.web-search`, `.embed` | 各ウィジェットの中身 |
+| `.embed--video`, `.embed--vertical` | YouTube の埋め込み / そのうちショート動画（縦長） |
 | `.todo__form`, `.todo-chip`, `.todo-group`, `.todo-group__header`, `.todo-item`, `.todo-item--done`, `.todo-item__check` | ToDo の入力欄・絞り込みボタン・カテゴリー・1 件ごとの行 |
 | `.widget.is-drop-target` | URL をドラッグして、ドロップできる状態のリンク集 |
 | `.toast` | 画面下に一時的に出るお知らせ |
@@ -520,6 +544,7 @@ public/                      GitHub Pages で公開されるファイル
   css/                       スタイル（上記「見た目をカスタマイズする」参照）
   js/app.js                  画面の描画・編集・ドラッグ＆ドロップ
   js/storage.js              ログインと保存（Firebase）
+  js/embed.js                YouTube の URL を埋め込み用に変換
   js/firebase-config.js      あなたの Firebase の設定値
   js/config.js               テーマ一覧などの設定
   vendor/Sortable.min.js     並べ替えライブラリ SortableJS（MIT）
