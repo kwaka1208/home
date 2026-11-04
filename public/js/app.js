@@ -629,6 +629,7 @@ function renderWidget(widget) {
     h("header", { class: "widget__header" },
       h("span", { class: "widget__handle", title: "ドラッグで移動", "aria-hidden": "true" }, "⠿"),
       h("h2", { class: "widget__title" }, h("span", { class: "widget__title-text" }, widget.title || "")),
+      HEADER_REFRESH_WIDGETS.includes(widget.type) ? renderHeaderRefresh(widget) : null,
       tools,
     ),
     h("div", { class: "widget__body" }, renderWidgetBody(widget)),
@@ -1140,6 +1141,44 @@ function renderGoogleWidget(widget, { cacheKey, load, view }) {
   });
 }
 
+/** 更新ボタンを見出しの右に置く（中に更新時刻の行を出さない）ウィジェット */
+const HEADER_REFRESH_WIDGETS = ["calendar"];
+
+/** 見出しの更新ボタンに出す説明（最後に読み込んだ時刻つき） */
+function refreshButtonTitle(widget) {
+  const entry = googleCache.get(widget.id);
+  if (entry?.loading) return "読み込み中…";
+  const time = entry?.fetchedAt
+    ? new Date(entry.fetchedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
+    : "";
+  return time ? `最新の情報を読み込む（${time} 更新）` : "最新の情報を読み込む";
+}
+
+function renderHeaderRefresh(widget) {
+  return h("button", {
+    type: "button",
+    class: "button button--small button--ghost widget__refresh",
+    title: refreshButtonTitle(widget),
+    "aria-label": refreshButtonTitle(widget),
+    onclick: () => {
+      const e = googleCache.get(widget.id);
+      if (e?.loading) return;
+      if (e) e.fetchedAt = 0;
+      refreshWidgetBody(widget);
+    },
+  }, "↻");
+}
+
+/** 見出しの更新ボタンの説明を、今の状態に合わせる */
+function updateHeaderRefresh(widget) {
+  const button = el.dashboard.querySelector(`.widget[data-id="${CSS.escape(widget.id)}"] .widget__refresh`);
+  if (!button) return;
+  const title = refreshButtonTitle(widget);
+  button.title = title;
+  button.setAttribute("aria-label", title);
+  button.classList.toggle("is-loading", Boolean(googleCache.get(widget.id)?.loading));
+}
+
 /**
  * 外部から読み込んで表示するウィジェットの共通部分（カレンダー・Gmail・天気・GitHub）。
  * 読み込んだ結果は googleCache に控え、refreshMs ごとに読み込み直す。
@@ -1153,7 +1192,8 @@ function renderRemote(widget, { cacheKey, load, view, refreshMs, onError }) {
   const updated = current?.fetchedAt
     ? new Date(current.fetchedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
     : "";
-  const toolbar = h("div", { class: "google-toolbar" },
+  // 見出しに更新ボタンを置くウィジェットは、更新時刻の行を出さずに中身を上に詰める
+  const toolbar = HEADER_REFRESH_WIDGETS.includes(widget.type) ? null : h("div", { class: "google-toolbar" },
     h("span", { class: "google-toolbar__time" },
       current?.loading ? "読み込み中…" : updated ? `${updated} 更新` : ""),
     h("button", {
@@ -1195,6 +1235,7 @@ function renderRemote(widget, { cacheKey, load, view, refreshMs, onError }) {
 async function loadRemote(widget, key, load, onError) {
   const entry = { ...(googleCache.get(widget.id) || {}), key, loading: true };
   googleCache.set(widget.id, entry);
+  queueMicrotask(() => updateHeaderRefresh(widget)); // 見出しのボタンを「読み込み中」に（描き終わってから）
   try {
     entry.data = await load();
     entry.error = null;
@@ -1207,6 +1248,7 @@ async function loadRemote(widget, key, load, onError) {
   entry.fetchedAt = Date.now();
   entry.loading = false;
   refreshWidgetBody(widget);
+  updateHeaderRefresh(widget);
 }
 
 function renderCalendar(widget) {
