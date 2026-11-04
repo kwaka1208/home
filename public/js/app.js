@@ -3197,12 +3197,16 @@ el.signoutButton.addEventListener("click", async () => {
 });
 
 async function init() {
-  await loadAddons();
+  // アドオンの読み込みは、Firebase の準備やログインの確認と同時に進め、
+  // ダッシュボードを開く直前にだけ待つ（起動を遅くしないため）
+  const addonsReady = loadAddons();
+
   // ログイン前も、前回選んだテーマで表示する
   const appearance = storage.readAppearance();
   applySettings({ ...DEFAULT_SETTINGS, ...(appearance || {}) });
 
   if (!storage.isConfigured) {
+    await addonsReady;
     await openDashboard(null);
     return;
   }
@@ -3214,9 +3218,10 @@ async function init() {
     showBanner(err.message);
     return;
   }
-  storage.watchUser((user) => {
+  storage.watchUser(async (user) => {
     if (user) {
       el.signin.hidden = true;
+      await addonsReady;
       openDashboard(user);
     } else {
       showSignedOut();
