@@ -59,6 +59,12 @@
     box-shadow: none;
   }
 
+  .button--large {
+    min-height: 48px;
+    padding: var(--space-2) var(--space-5);
+    font-size: var(--font-size-md);
+  }
+
   .button--small {
     min-height: 28px;
     padding: 0 var(--space-2);
@@ -119,6 +125,37 @@
   .banner[data-kind="info"] {
     background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
   }
+
+  /* ---------- ログイン画面 ---------- */
+  .signin {
+    display: grid;
+    place-items: center;
+    min-height: 60vh;
+    padding: var(--space-5) var(--page-gutter);
+  }
+  .signin__card {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-4);
+    width: min(420px, 100%);
+    padding: var(--space-6) var(--space-5);
+    background: var(--widget-bg);
+    border: var(--widget-border);
+    border-radius: var(--widget-radius);
+    box-shadow: var(--widget-shadow);
+    -webkit-backdrop-filter: var(--widget-backdrop);
+    backdrop-filter: var(--widget-backdrop);
+    text-align: center;
+  }
+  .signin__title {
+    font-family: var(--widget-title-font);
+    font-size: var(--font-size-lg);
+    font-weight: var(--widget-title-weight);
+    letter-spacing: var(--widget-title-spacing);
+    color: var(--widget-title-color);
+  }
+  .signin__title::before { content: var(--widget-title-prefix); }
+  .signin__text { color: var(--color-text-muted); font-size: var(--font-size-sm); }
 
   /* ---------- ウィジェット ---------- */
   .widget {

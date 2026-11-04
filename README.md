@@ -1,165 +1,157 @@
 # personal-dashboard
 
 よく使うツールへのリンクやメモをまとめた、**自分専用のダッシュボード**です。
-Google アカウントでログインした本人だけが見られます。
+Google アカウントでログインした本人だけが、中身を見たり編集したりできます。
 
 - 画面のレイアウトはドラッグ＆ドロップで自由に並べ替え
 - リンク集・メモ・時計・Web 検索・埋め込み（Google カレンダーなど）の 5 種類のウィジェット
-- 編集内容はサーバー（Cloudflare KV）に自動保存されるので、PC でもスマホでも同じ画面
-- 見た目は CSS 変数（デザイントークン）で丸ごと着せ替え可能
+- 編集内容は Firebase（Cloud Firestore）に自動保存されるので、PC でもスマホでも同じ画面
+- 見た目はテーマで切り替え、CSS 変数（デザイントークン）で丸ごと着せ替えも可能
 - このリポジトリは**テンプレート**です。コピーして自分のリポジトリを作れば、誰でも自分用のダッシュボードを無料で持てます
 
 ## しくみ
 
 ```
-ブラウザ ──▶ Cloudflare Access ──▶ Cloudflare Workers ──▶ Workers KV
-            （Google でログイン）   （画面の配信と保存 API）   （ダッシュボードのデータ）
-                                         ▲
-GitHub（テンプレートから作ったあなたのリポジトリ）─┘ push すると自動デプロイ
+ブラウザ ──▶ GitHub Pages（画面：HTML / CSS / JavaScript）
+   │
+   ├──▶ Firebase Authentication（Google でログイン）
+   └──▶ Cloud Firestore（ダッシュボードのデータ。本人だけ読み書きできる）
 ```
 
 | 役割 | 使うもの | 費用 |
 |---|---|---|
-| ソースコードの管理 | GitHub | 無料 |
-| 画面の配信・保存 API | Cloudflare Workers（Static Assets） | 無料枠で足ります |
-| データの保存 | Cloudflare Workers KV | 無料枠で足ります |
-| ログイン（Google 認証） | Cloudflare Zero Trust の Access | 50 ユーザーまで無料 |
+| ソースコードの管理と画面の公開 | GitHub ＋ GitHub Pages | 無料 |
+| ログイン（Google 認証） | Firebase Authentication | 無料 |
+| データの保存 | Cloud Firestore | 無料プラン（Spark）で足ります。カードの登録も不要 |
 
-### リンクの中身はリポジトリに置きません
+Firebase は**各自が自分のプロジェクトを作って**使います。あなたのデータはあなたの Firebase に保存され、
+テンプレートの作者や他の利用者が見ることはできません。
 
-**あなたが登録したリンクやメモは GitHub には一切保存されず**、Cloudflare KV に
-ログインしたメールアドレスごとに保存されます。リポジトリに入っているのは画面のプログラムと、
-初回表示用のサンプル（`public/default-dashboard.json`）だけです。
+### 何が公開されて、何が守られるか
 
-保存 API（`/api/*`）は Access によるチェックに加えて、Worker 自身も Access が発行した
-トークン（JWT）の署名・発行元・宛先を検証します。Access の設定を誤って外してしまっても、
-データは読み書きできません。
+| 誰でも見られるもの | ログインした本人しか見られないもの |
+|---|---|
+| ログイン画面と、画面のプログラム（このリポジトリと同じ内容） | 登録したリンク、メモ、ウィジェットの並び |
+| `firebase-config.js` に書く Firebase の設定値 | ダッシュボードの名前、テーマ、埋め込みの URL |
+
+データを守っているのは、Firestore の**セキュリティルール**（`firestore.rules`）です。
+「ログインしていて、許可したメールアドレスで、自分のデータであること」を満たすときだけ読み書きできます。
+他の人が Google アカウントでログインすること自体はできますが、データは一切読めません。
+
+Firebase の設定値（`apiKey` など）は、画面のプログラムに埋め込んで公開する前提の値で、秘密情報ではありません。
 
 ---
 
 ## 自分用のダッシュボードを作る手順
 
-所要時間は 30 分ほどです。用意するのは次の 3 つです。
+所要時間は 15〜20 分ほどです。用意するのは GitHub アカウントと Google アカウントの 2 つです。
 
-- GitHub アカウント
-- Cloudflare アカウント（無料。<https://dash.cloudflare.com/sign-up>）
-- Google アカウント（ログインに使うもの）
-
-> Cloudflare と Google Cloud の管理画面は、ときどきメニュー名が変わります。見当たらないときは、
+> Firebase と GitHub の管理画面は、ときどきメニュー名が変わります。見当たらないときは、
 > 各手順に付けた公式ドキュメントのリンクを確認してください。
 
 ### 1. テンプレートから自分のリポジトリを作る
 
 1. このリポジトリの右上にある **Use this template → Create a new repository** を押します。
 2. Owner に自分のアカウント、Repository name に好きな名前（例：`personal-dashboard`）を入れます。
-3. 公開範囲は **Public** と **Private** のどちらでも動きます。
-   壁紙などの見た目の設定も人に見せたくなければ **Private** がおすすめです。
-4. **Create repository** を押すと、自分のアカウントにコピーができます。
+3. 公開範囲は **Public** を選びます。
+   GitHub の無料プランでは、GitHub Pages は Public リポジトリからしか公開できません。
+   リンクやメモはリポジトリに入らないので、Public でも中身は公開されません。
+4. **Create repository** を押します。
 
-作ったリポジトリのファイルを書き換える必要はありません（見た目を変えたいときは後述の
-「見た目をカスタマイズする」を参照）。
+作った直後に Actions の「Deploy to GitHub Pages」が失敗することがありますが、
+次の手順 2 の設定前に動いたためなので気にしなくて大丈夫です。
 
-> フォーク（**Fork**）でも同じように動きますが、公開リポジトリのフォークは非公開にできません。
+### 2. GitHub Pages を有効にする
 
-### 2. Cloudflare Zero Trust を有効にする
+参考：[GitHub Docs - GitHub Pages サイトの公開元を設定する](https://docs.github.com/ja/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 
-1. Cloudflare ダッシュボードの左メニューから **Zero Trust** を開きます。
-2. 初回はチーム名（Team name）の入力を求められます。好きな名前を付けます。
-   これが **チームドメイン** `<チーム名>.cloudflareaccess.com` になります。
-3. プランは **Free** を選びます（支払い情報の登録を求められることがありますが、50 ユーザーまでは無料です）。
+1. 作ったリポジトリの **Settings → Pages** を開きます。
+2. **Build and deployment** の **Source** を **GitHub Actions** にします。
 
-チームドメインは後から **Zero Trust → Settings** で確認できます。
+これで、`main` ブランチに変更を push するたびに、`public/` フォルダの中身が自動で公開されます。
+公開先の URL は `https://<GitHub のユーザー名>.github.io/<リポジトリ名>/` です。
 
-### 3. Google ログインを設定する
+### 3. Firebase プロジェクトを作り、Google ログインを有効にする
 
-参考：[Cloudflare Docs - Google](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/google/)
+参考：[Firebase - Google ログイン](https://firebase.google.com/docs/auth/web/google-signin?hl=ja)
 
-**Google Cloud 側**
+1. [Firebase コンソール](https://console.firebase.google.com/) を開き、**プロジェクトを作成**します。
+   名前は何でも構いません。Google アナリティクスや Gemini は使わないので、オフで大丈夫です。
+2. 左メニューの **構築 → Authentication** を開き、**始める** を押します。
+3. **ログイン方法** タブで **Google** を選び、**有効にする** をオンにします。
+   プロジェクトのサポートメールに自分のアドレスを選んで **保存** します。
 
-1. [Google Cloud Console](https://console.cloud.google.com/) で新しいプロジェクトを作ります（名前は何でも構いません）。
-2. **API とサービス → OAuth 同意画面**（Google Auth Platform）を開き、設定を始めます。
-   - アプリ名とサポート用メールアドレスを入力
-   - 対象（Audience）は **外部（External）** を選択
-   - 連絡先を入力して作成
-3. **クライアント → クライアントを作成**（OAuth クライアント ID の作成）を開きます。
-   - アプリケーションの種類：**ウェブ アプリケーション**
-   - 承認済みの JavaScript 生成元：`https://<チーム名>.cloudflareaccess.com`
-   - 承認済みのリダイレクト URI：`https://<チーム名>.cloudflareaccess.com/cdn-cgi/access/callback`
-4. 作成後に表示される **クライアント ID** と **クライアント シークレット** を控えます。
+Google Cloud で OAuth クライアントを作る必要はありません（Firebase が自動で用意します）。
 
-> 同意画面が「テスト」状態のままだと、**テストユーザーに登録した Google アカウントしかログインできません**。
-> 自分だけで使うなら、自分のアドレスをテストユーザーに追加すれば十分です。
+### 4. Firestore を作り、セキュリティルールを設定する
 
-**Cloudflare 側**
+参考：[Firebase - Cloud Firestore を使ってみる](https://firebase.google.com/docs/firestore/quickstart?hl=ja)
 
-1. **Zero Trust → Integrations → Identity providers** を開きます。
-2. **Add new identity provider** → **Google** を選びます。
-3. App ID にクライアント ID、Client secret にクライアント シークレットを貼り付けて保存します。
-4. 一覧の Google の横にある **Test** を押し、ログインできることを確認します。
+1. 左メニューの **構築 → Firestore Database** を開き、**データベースの作成** を押します。
+2. エディションを聞かれたら **Standard**、ロケーションは **asia-northeast1（東京）** などの近い場所を選びます
+   （ロケーションは後から変更できません）。
+3. セキュリティルールは **本番環境モード** を選んで作成します。
+4. 作成できたら **ルール** タブを開き、このリポジトリの [`firestore.rules`](firestore.rules) の内容を**すべて**貼り付けます。
+5. 貼り付けた中の次の部分を、**ログインに使う自分の Google アカウントのメールアドレス（小文字）**に書き換えます。
 
-### 4. Cloudflare Workers にデプロイする
+   ```
+   function allowedEmails() {
+     return ['you@example.com'];
+   }
+   ```
 
-1. Cloudflare ダッシュボードで **Workers & Pages → Create** を開きます。
-2. **Import a repository**（Git リポジトリを連携）を選び、GitHub と接続して、
-   手順 1 で作ったリポジトリを選びます。
-   Private にした場合は、GitHub と接続するときに表示される画面で、
-   Cloudflare にそのリポジトリへのアクセスを許可してください。
-3. 設定はそのままで構いません。
-   - プロジェクト名：`personal-dashboard`（`wrangler.jsonc` の `name` と同じにします）
-   - ビルドコマンド：空欄
-   - デプロイコマンド：`npx wrangler deploy`
-4. **Deploy** を押します。
+   家族などにも使わせる場合は `['a@gmail.com', 'b@gmail.com']` のように並べます。データは人ごとに別々に保存されます。
+6. **公開** を押します。
 
-初回デプロイで、データ保存用の KV ネームスペースも自動で作られます。
-完了すると `https://personal-dashboard.<あなたのサブドメイン>.workers.dev` が発行されます。
+> リポジトリの `firestore.rules` は手順の見本です。書き換えなくても動作には影響しません
+> （Firebase に効くのは、コンソールで公開したルールです）。
 
-> この時点で URL を開くと、画面は出ますが「TEAM_DOMAIN と POLICY_AUD が設定されていません」と表示され、
-> データは読み書きできません。次の手順で認証をかけます。
+### 5. Firebase の設定値をリポジトリに書く
 
-### 5. Access でログインを必須にする
+1. Firebase コンソールの左上の歯車 → **プロジェクトの設定** を開きます。
+2. **全般** タブの下の方にある **マイアプリ** で、ウェブのアイコン（`</>`）を押します。
+3. アプリのニックネームを入れて **アプリを登録** します（Firebase Hosting のチェックは不要です）。
+4. 表示される `firebaseConfig` の値を控えます。
 
-参考：[Cloudflare Docs - Cloudflare Access for Workers](https://developers.cloudflare.com/workers/configuration/cloudflare-access/)
+   ```js
+   const firebaseConfig = {
+     apiKey: "AIza...",
+     authDomain: "your-project.firebaseapp.com",
+     projectId: "your-project",
+     ...
+   };
+   ```
 
-1. **Workers & Pages** で `personal-dashboard` を開き、**Access** タブを選びます。
-2. **Protect this Worker behind Access** を押します。
-3. 対象は **All traffic** を選びます。
-4. Authentication policy はひとまず **Cloudflare account**（この Cloudflare アカウントのメンバーだけ許可）を選び、
-   **Apply Access** で保存します。
+5. GitHub で自分のリポジトリの `public/js/firebase-config.js` を開き、鉛筆アイコン（Edit this file）を押します。
+6. `YOUR_...` となっている 6 つの値を、控えた値に書き換えて **Commit changes** を押します。
 
-続けて、**自分の Google アカウントだけ**が入れるようにポリシーを調整します。
+コミットすると、手順 2 で設定した GitHub Actions が自動で動き、1〜2 分で公開されます
+（リポジトリの **Actions** タブで進み具合を確認できます）。
 
-1. **Zero Trust → Access → Applications** を開き、今できたアプリケーションを編集します。
-2. **Policies** で許可ルールを次のように変更します。
-   - Action：**Allow**
-   - Include：**Emails** に自分の Gmail アドレス（家族などにも使わせるなら複数）
-3. **Login methods** で **Google** だけにチェックを入れます（**Instant Auth** を有効にすると、選択画面を飛ばして直接 Google に進みます）。
-4. 保存します。
+### 6. GitHub Pages のドメインを Firebase に登録する
 
-> Access タブが見当たらない場合は、**Zero Trust → Access → Applications → Add an application →
-> Self-hosted** で、ドメインに `personal-dashboard.<サブドメイン>.workers.dev` を指定して作成しても同じです。
+1. Firebase コンソールの **Authentication → 設定 → 承認済みドメイン** を開きます。
+2. **ドメインを追加** で `<GitHub のユーザー名>.github.io` を追加します（`https://` やリポジトリ名は付けません）。
 
-### 6. Worker に Access の情報を教える
-
-Worker がトークンを検証するために、次の値を設定します。
-
-| 変数名 | 値 | 確認場所 |
-|---|---|---|
-| `TEAM_DOMAIN` | `<チーム名>.cloudflareaccess.com` | Zero Trust → Settings |
-| `POLICY_AUD` | Application Audience (AUD) Tag（長い英数字） | Zero Trust → Access → Applications → 手順 5 のアプリの詳細 |
-| `ALLOWED_EMAILS`（任意） | 許可するメールアドレスをカンマ区切りで | Access のポリシーに加えて、Worker 側でも絞り込みたいとき |
-
-1. **Workers & Pages → personal-dashboard → Settings → Variables and Secrets** を開きます。
-2. **Add** で上の変数を **Text** として追加し、**Deploy** します。
-
-`wrangler.jsonc` に `keep_vars: true` を入れてあるので、GitHub に push して再デプロイしても
-ここで設定した値は消えません。
+これをしないと、ログインのときに「承認済みドメインに登録されていません」と表示されます。
 
 ### 7. 使い始める
 
-`https://personal-dashboard.<サブドメイン>.workers.dev` を開くと Google のログイン画面が出ます。
-ログインすると、サンプルのレイアウトが表示されます。右下に自分のメールアドレスが出ていれば完了です。
+`https://<GitHub のユーザー名>.github.io/<リポジトリ名>/` を開き、**Google でログイン** を押します。
+手順 4 で許可したアカウントでログインすると、サンプルのレイアウトが表示されます。
+右下に自分のメールアドレスが出ていれば完了です。
 
 ブラウザのホームページやブックマークに登録しておくと便利です。
+
+### （任意）API キーの使える場所を絞る
+
+`apiKey` は公開されても問題ない値ですが、他のサイトから使われないように制限をかけておくと、より安心です。
+
+1. [Google Cloud コンソール](https://console.cloud.google.com/apis/credentials) で、Firebase のプロジェクトを選びます。
+2. **API とサービス → 認証情報** の **API キー**（Browser key）を開きます。
+3. **アプリケーションの制限** を **ウェブサイト** にし、次の 2 つを追加して保存します。
+   - `https://<GitHub のユーザー名>.github.io/*`
+   - `https://<プロジェクト ID>.firebaseapp.com/*`（ログイン画面で使われます）
 
 ---
 
@@ -176,6 +168,7 @@ Worker がトークンを検証するために、次の値を設定します。
 | リンクを編集・削除 | 編集中に、リンクをクリック（または **✎**） |
 | リンクを絞り込む | 上部の検索欄（`/` キーで移動、Enter で先頭のリンクを開く） |
 | テーマ・配色・表示密度・バックアップ | 右上の **⚙** |
+| ログアウト | 右下の **ログアウト**（この端末に残した控えも消えます） |
 
 スマートフォンでは、少し長押ししてからドラッグすると並べ替えられます。
 
@@ -376,7 +369,7 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 
 ログインして**初めて**開いたときのレイアウトは `public/default-dashboard.json` です。
 リポジトリを Public にしている場合は、**人に見られて困るリンクは書かないでください**
-（自分のリンクは画面から追加すれば KV に保存され、公開されません）。
+（自分のリンクは画面から追加すれば Firestore に保存され、公開されません）。
 
 ---
 
@@ -405,9 +398,12 @@ git merge upstream/main --allow-unrelated-histories
 
 2 回目以降は `--allow-unrelated-histories` は不要です（`git fetch upstream` と `git merge upstream/main` だけ）。
 
-最初の取り込みでは、あなたが変更したファイルで衝突（コンフリクト）が出ることがあります。
-衝突したファイルを開いて残したい内容に直し、`git add` してから `git commit` してください。
-そのあと GitHub に push すると、Cloudflare が自動で再デプロイします。データ（KV）と環境変数はそのまま残ります。
+最初の取り込みでは、あなたが変更したファイル（`firebase-config.js` など）で衝突（コンフリクト）が出ることがあります。
+`firebase-config.js` は自分の値を残してください。衝突したファイルを直したら `git add` してから `git commit` し、
+GitHub に push すると自動で公開し直されます。Firestore のデータはそのまま残ります。
+
+本家で `firestore.rules` が変わったときは、Firebase コンソールのルールにも反映してください
+（自分のメールアドレスの部分は残します）。
 
 カスタマイズを `custom.css` と `themes.css` への追記に留めておくと、衝突しにくくなります。
 
@@ -415,48 +411,64 @@ git merge upstream/main --allow-unrelated-histories
 
 ## ローカルで動かす（開発する人向け）
 
-Node.js 20 以降が必要です。
+ビルドは不要です。`public/` フォルダを HTTP で配信するだけで動きます。
 
 ```bash
-npm install
+cd public
 ```
 
 ```bash
-cp .dev.vars.example .dev.vars
+python3 -m http.server 8000
 ```
 
-```bash
-npm run dev
-```
+<http://localhost:8000> を開きます。
 
-<http://localhost:8787> を開きます。ローカルでは Access がないため、`.dev.vars` の
-`DEV_AUTH_EMAIL` のメールアドレスでログインしているものとして動きます
-（この設定は localhost 以外では無視されます）。データは `.wrangler/` 以下に保存されます。
+- `firebase-config.js` が未設定（`YOUR_...` のまま）なら「ローカルモード」で動き、データはブラウザにだけ保存されます。
+  見た目の調整はこれで十分です。
+- 自分の Firebase の値を入れていれば、本番と同じ Firebase につながります（`localhost` は最初から承認済みドメインです）。
+
+### Firebase エミュレーターで試す
+
+本番のデータに触れずにログインや保存を試したいときは、[Firebase Local Emulator Suite](https://firebase.google.com/docs/emulator-suite?hl=ja) を使います（Node.js と Java が必要です）。
+
+1. `public/js/firebase-config.js` を一時的に次のようにします（コミットしないでください）。
+   - `projectId` を `demo-test`、`apiKey` を `fake-api-key` にする
+   - `USE_EMULATORS_ON_LOCALHOST` を `true` にする
+2. `firestore.rules` の `allowedEmails()` に、テストで使うメールアドレスを書きます。
+3. リポジトリのルートでエミュレーターを起動します。
+
+   ```bash
+   npx firebase-tools emulators:start --only auth,firestore --project demo-test
+   ```
+
+4. 別のターミナルで `public/` を配信し、<http://127.0.0.1:8000> を開きます。
+   ログインボタンを押すと、エミュレーターの画面で好きなメールアドレスのテスト用アカウントを作れます。
 
 ### ファイル構成
 
 ```
-public/                     ブラウザに配信されるファイル
-  index.html                画面の骨組み
-  default-dashboard.json    初回表示のレイアウト
-  css/                      スタイル（上記「見た目をカスタマイズする」参照）
-  js/app.js                 画面の描画・編集・ドラッグ＆ドロップ
-  js/storage.js             読み込みと保存（API と localStorage）
-  js/config.js              テーマ一覧などの設定
-  vendor/Sortable.min.js    並べ替えライブラリ SortableJS（MIT）
-src/worker.js               保存 API と Access トークンの検証
-wrangler.jsonc              Cloudflare Workers の設定
+public/                      GitHub Pages で公開されるファイル
+  index.html                 画面の骨組み
+  default-dashboard.json     初回表示のレイアウト
+  css/                       スタイル（上記「見た目をカスタマイズする」参照）
+  js/app.js                  画面の描画・編集・ドラッグ＆ドロップ
+  js/storage.js              ログインと保存（Firebase）
+  js/firebase-config.js      あなたの Firebase の設定値
+  js/config.js               テーマ一覧などの設定
+  vendor/Sortable.min.js     並べ替えライブラリ SortableJS（MIT）
+firestore.rules              Firestore のセキュリティルール（コンソールに貼り付ける見本）
+firebase.json                エミュレーター用の設定
+.github/workflows/pages.yml  public/ を GitHub Pages に公開する設定
 ```
 
-### API
+### データの保存形式
 
-すべて Cloudflare Access の認証が必要です。
+Firestore の `dashboards/{ユーザー ID}` ドキュメントに、次の形で保存します。
 
-| メソッド | パス | 内容 |
-|---|---|---|
-| `GET` | `/api/me` | ログイン中のメールアドレス |
-| `GET` | `/api/dashboard` | ダッシュボードのデータ（未保存なら 404） |
-| `PUT` | `/api/dashboard` | ダッシュボードのデータを保存（JSON、512KB まで） |
+| フィールド | 内容 |
+|---|---|
+| `json` | ダッシュボード全体を JSON 文字列にしたもの（設定画面の「書き出す」と同じ形式。500KB まで） |
+| `updatedAt` | 最後に保存した日時（サーバーの時刻） |
 
 ---
 
@@ -464,32 +476,15 @@ wrangler.jsonc              Cloudflare Workers の設定
 
 | 症状 | 確認すること |
 |---|---|
-| 「TEAM_DOMAIN と POLICY_AUD が設定されていません」 | 手順 6 の変数を設定して **Deploy** したか |
-| 「AUD が一致しません」 | `POLICY_AUD` が、手順 5 のアプリの AUD Tag と同じか（前後の空白に注意） |
-| 「Cloudflare Access のトークンがありません」 | 手順 5 の Access が `workers.dev` の URL にかかっているか |
-| 「このアカウントには許可がありません」 | `ALLOWED_EMAILS` にログインしたアドレスが入っているか |
-| Google のログインで「アクセスをブロック」と出る | Google の OAuth 同意画面のテストユーザーに自分を追加したか |
-| Google のログインで「エラー 401: deleted_client」（The OAuth client was deleted）と出る | 下の「deleted_client エラーが出るとき」を参照 |
-| 「サーバーに保存できないため、このブラウザにだけ保存しています」 | `index.html` を直接開いている、または API に届いていない |
-| しばらく放置したら保存できない | Access のログインの期限切れです。ページを再読み込みしてください |
-| デプロイで KV の作成に失敗する | **Workers & Pages → KV** でネームスペースを作り、`wrangler.jsonc` の `kv_namespaces` に `"id": "<作った ID>"` を追記してください |
-
-### deleted_client エラーが出るとき
-
-手順 3 の **Test** やログインで「アクセスをブロック: 認証エラーです」「エラー 401: deleted_client」と出る場合は、
-Cloudflare に登録したクライアント ID の OAuth クライアントが、Google Cloud 側に存在しない（削除済み）状態です。
-クライアントを作り直す前の古い ID が残っている、別のプロジェクトのクライアントを使っている、などで起こります。
-
-1. [Google Cloud Console](https://console.cloud.google.com/) の上部で、手順 3 で使ったプロジェクトが選ばれているか確認します。
-2. **API とサービス → 認証情報**（または **Google Auth Platform → クライアント**）に、「ウェブ アプリケーション」のクライアントがあるか確認します。
-3. **Zero Trust → Integrations → Identity providers → Google → Edit** の **App ID** が、そのクライアント ID と完全に同じか比べます。
-4. 違っていれば、正しいクライアント ID と、同じクライアントのシークレットを登録し直して保存します。
-   クライアントが見つからなければ、手順 3 の「Google Cloud 側」をやり直して新しく作ります
-   （削除から 30 日以内なら、認証情報の画面から復元もできます）。
-5. もう一度 **Test** を押します。作り直した直後は、反映に数分かかることがあります。
-
-> クライアント シークレットを全文表示できるのは、作成した直後だけです。控え忘れたときは、
-> そのクライアントの画面で新しいシークレットを追加し、それを Cloudflare に登録してください。
+| 「Firebase が未設定のため『ローカルモード』で動いています」 | 手順 5 で `firebase-config.js` の値を書き換えてコミットしたか。公開まで 1〜2 分かかります |
+| ページが 404 になる | 手順 2 で Pages の Source を **GitHub Actions** にしたか。Actions タブで「Deploy to GitHub Pages」が成功しているか（失敗していたら **Run workflow** で再実行） |
+| 「承認済みドメインに登録されていません」 | 手順 6 で `<ユーザー名>.github.io` を追加したか |
+| 「Google ログインが有効になっていません」「Authentication が開始されていません」 | 手順 3 で Authentication を始め、Google を有効にしたか |
+| 「apiKey が正しくありません」 | `firebase-config.js` の値に貼り間違いがないか |
+| 「〇〇 ではこのダッシュボードを使えません」 | 手順 4 のルールの `allowedEmails()` にそのアドレスが**小文字で**入っているか、ルールを**公開**したか |
+| 「Firestore のデータベースが見つかりません」 | 手順 4 で Firestore Database を作成したか |
+| 「ポップアップがブロックされました」 | ブラウザでこのサイトのポップアップを許可して、もう一度ログイン |
+| 変更が反映されない | GitHub Pages の反映には 1〜2 分かかります。ブラウザを再読み込みしてください |
 
 ## ライセンス
 
