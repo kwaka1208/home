@@ -32,8 +32,16 @@
     --color-backdrop:       rgb(0 0 0 / 0.4);
 
     /* ---------- 文字 ---------- */
-    --font-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP",
-                 system-ui, -apple-system, "Segoe UI", sans-serif;
+    /*
+     * 各 OS の標準フォント（システムフォント）を使います。
+     *   macOS / iOS : San Francisco + ヒラギノ角ゴシック
+     *   Windows     : Segoe UI + Yu Gothic UI（OS の設定による）
+     *   Android     : Roboto + Noto Sans CJK
+     * system-ui に対応していない古いブラウザ向けに、各 OS の名前も続けて書いています。
+     */
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo,
+                 Roboto, "Noto Sans JP", sans-serif;
     --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
     --font-size-xs: 0.75rem;
     --font-size-sm: 0.8125rem;

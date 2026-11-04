@@ -242,7 +242,7 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | `--color-text` / `--color-text-muted` | 文字色 / 補足の文字色 |
 | `--color-accent` / `--color-accent-contrast` | アクセント色 / その上に載せる文字色 |
 | `--color-border` / `--color-danger` / `--color-focus` | 枠線 / 削除ボタン / フォーカス枠 |
-| `--font-sans` / `--font-mono` | 本文 / 時計のフォント |
+| `--font-sans` / `--font-mono` | 本文 / 時計のフォント（標準は各 OS のシステムフォント） |
 | `--font-size-*`（`xs` `sm` `md` `lg` `xl` `clock`） | 文字サイズ |
 | `--space-1` 〜 `--space-6` | 余白の段階（4px 〜 32px） |
 | `--radius-sm` / `--radius-md` / `--radius-lg` | 角丸 |
