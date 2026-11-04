@@ -86,6 +86,9 @@ const MIN_SIZE = {
   github: { rows: 2 },
 };
 
+/** 高さ（段数）を固定する種類。1 行で使うものは、段を増やしても空白が増えるだけなので選べなくする */
+const FIXED_ROWS = { search: 1, mail: 1 };
+
 function minSizeOf(type) {
   return { size: "s", rows: 1, ...(MIN_SIZE[type] || {}) };
 }
@@ -99,6 +102,7 @@ function clampSize(size, type) {
 
 /** 高さ（段数）を選択肢の中で、最小サイズ以上にそろえる */
 function normalizeRows(value, type) {
+  if (FIXED_ROWS[type]) return FIXED_ROWS[type];
   const rows = Number(value);
   const valid = ROW_OPTIONS.includes(rows) ? rows : DEFAULT_ROWS[type] || 2;
   return Math.max(valid, minSizeOf(type).rows);
@@ -1121,11 +1125,15 @@ function renderGoogleWidget(widget, { cacheKey, load, view }) {
   if (!token) {
     // 期限が切れても、最後に読み込んだ内容は表示したままにして、小さく「連携し直す」を出す
     if (entry?.data !== undefined && entry.key === cacheKey) {
-      return h("div", { class: "google-widget" },
-        h("p", { class: "google-expired" },
-          h("span", {}, state.settings.autoRenewGoogle
-            ? "連携の期限が切れました（画面をクリックすると自動で延長します）"
-            : "連携の期限が切れました"),
+      const compact = widget.type === "mail"; // 1 段のウィジェットには短く出す
+      return h("div", { class: `google-widget${compact ? " google-widget--compact" : ""}` },
+        h("p", {
+          class: "google-expired",
+          title: state.settings.autoRenewGoogle ? "画面をクリックすると自動で延長します" : null,
+        },
+          h("span", {}, compact || !state.settings.autoRenewGoogle
+            ? "連携の期限が切れました"
+            : "連携の期限が切れました（画面をクリックすると自動で延長します）"),
           h("button", { type: "button", class: "button button--small", onclick: connect }, "連携し直す"),
         ),
         view(entry.data),
@@ -1134,7 +1142,7 @@ function renderGoogleWidget(widget, { cacheKey, load, view }) {
     return h("div", { class: "google-connect" },
       h("p", { class: "widget__empty" }, widget.type === "calendar"
         ? "Google カレンダーの予定を表示するには、読み取りの許可が必要です。"
-        : "Gmail の未読件数を表示するには、ラベルと件数の読み取りの許可が必要です（メールの本文や件名は読みません）。"),
+        : "未読件数の表示には許可が必要です（本文・件名は読みません）"),
       h("button", { type: "button", class: "button button--primary", onclick: connect },
         storage.getGoogleConnection() ? "連携し直す" : "Google と連携"),
     );
@@ -1184,7 +1192,7 @@ document.addEventListener("click", (event) => {
 }, true);
 
 /** 更新ボタンを見出しの右に置く（中に更新時刻の行を出さない）ウィジェット */
-const HEADER_REFRESH_WIDGETS = ["calendar"];
+const HEADER_REFRESH_WIDGETS = ["calendar", "mail"];
 
 /** 見出しの更新ボタンに出す説明（最後に読み込んだ時刻つき） */
 function refreshButtonTitle(widget) {
@@ -2672,10 +2680,14 @@ function updateSizeOptions() {
   for (const option of f.rows.options) option.disabled = Number(option.value) < min.rows;
   f.size.value = clampSize(f.size.value, f.type.value);
   if (Number(f.rows.value) < min.rows) f.rows.value = String(min.rows);
+  const fixed = FIXED_ROWS[f.type.value];
+  f.rows.disabled = Boolean(fixed);
+  if (fixed) f.rows.value = String(fixed);
   const hint = $("#size-hint");
   const isMin = min.size !== "s" || min.rows > 1;
-  hint.hidden = !isMin;
-  hint.textContent = isMin ? `この種類の最小サイズ：幅 ${SIZE_NAMES[min.size]}・高さ ${min.rows} 段` : "";
+  hint.hidden = !isMin && !fixed;
+  hint.textContent = fixed ? `この種類の高さは ${fixed} 段で固定です`
+    : isMin ? `この種類の最小サイズ：幅 ${SIZE_NAMES[min.size]}・高さ ${min.rows} 段` : "";
 }
 
 el.widgetForm.elements.accent.addEventListener("input", () => {

@@ -571,6 +571,13 @@
 
   /* ---------- Web 検索 ---------- */
   .web-search { display: flex; gap: var(--space-2); }
+  /* Web 検索は高さ 1 段で固定。検索欄を本文の上下中央に置く */
+  .widget--search .widget__body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-top: 0;
+  }
 
   /* ---------- 埋め込み ---------- */
   /* タイル表示：ウィジェットの高さいっぱいに表示（YouTube はプレーヤー側で黒帯を付けて収める） */
@@ -742,13 +749,27 @@
   }
   .cal-event__meet { flex: none; }
 
-  /* メールは 1 段に収まるよう、更新ボタンを右上に重ね、件数とラベルを横に並べる */
-  .widget--mail .widget__body { position: relative; }
-  .widget--mail .google-toolbar {
-    position: absolute;
-    top: 0;
-    right: var(--widget-padding);
-    margin: 0;
+  /*
+   * メールは高さ 1 段で固定。更新ボタンは見出しの右に置き、件数とラベルを横に並べて、
+   * 本文の中で上下中央に置く（連携のお願い・期限切れのお知らせも 1 段に収まる短さにしている）
+   */
+  .widget--mail .widget__body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-top: 0;
+  }
+  .widget--mail .google-connect { gap: var(--space-1); }
+  /* 中身に合わせる表示では、上下中央にそろえる必要がないので余白を元に戻す */
+  [data-layout="flow"] .widget--mail .widget__body,
+  [data-layout="flow"] .widget--search .widget__body { padding-top: var(--space-2); }
+  .widget--mail .google-connect .widget__empty { padding: 0; }
+  .google-widget--compact { gap: var(--space-1); }
+  .google-widget--compact .google-expired { flex-wrap: nowrap; padding-block: 2px; }
+  .google-widget--compact .google-expired > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .mail {
     display: grid;
