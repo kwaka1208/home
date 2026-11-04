@@ -116,7 +116,7 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | 主なクラス・属性 | 対象 |
 |---|---|
 | `.app-header`, `.app-header__title` | 上部のヘッダー / ダッシュボード名 |
-| `.app-footer`, `.app-footer__link` | 画面の下に固定したフッター / このテンプレートの GitHub へのリンク |
+| `.app-footer`, `.app-footer__link`, `.app-footer__version` | 画面の下に固定したフッター / このテンプレートの GitHub へのリンク（アイコン） / バージョン番号 |
 | `.dashboard` | ウィジェットを並べるグリッド |
 | `.widget`, `.widget--links` / `--note` / `--clock` / `--search` / `--embed` | ウィジェット（種類別） |
 | `.widget[data-size="s"]`（`m` `l` `xl`） | 幅ごと |
