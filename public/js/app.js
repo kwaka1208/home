@@ -28,7 +28,7 @@
  */
 import { THEME_PRESETS, FAVICON_URL, SAVE_DELAY_MS } from "./config.js";
 import * as storage from "./storage.js";
-import { toYouTubeEmbed } from "./embed.js";
+import { toYouTubeEmbed, toImageUrl } from "./embed.js";
 
 const WIDGET_TYPES = {
   links: "リンク集",
@@ -37,11 +37,14 @@ const WIDGET_TYPES = {
   search: "Web 検索",
   embed: "埋め込み",
   todo: "ToDo",
+  photo: "写真",
 };
 const DEFAULT_TODO_CATEGORIES = ["仕事", "プライベート"];
 /** ウィジェットの高さ（段数）の選択肢と、種類ごとの初期値 */
 const ROW_OPTIONS = [1, 2, 3, 4];
-const DEFAULT_ROWS = { links: 2, note: 2, clock: 1, search: 1, embed: 2, todo: 3 };
+const DEFAULT_ROWS = { links: 2, note: 2, clock: 1, search: 1, embed: 2, todo: 3, photo: 2 };
+/** 写真のスライドショーの切り替え間隔（秒）の選択肢。0 は切り替えない */
+const PHOTO_INTERVALS = [0, 5, 10, 30, 60, 300];
 
 function normalizeRows(value, type) {
   const rows = Number(value);
@@ -214,6 +217,17 @@ function normalizeWidget(w) {
         done: Boolean(item.done),
         categoryId: String(item.categoryId),
       }));
+  }
+  if (widget.type === "photo") {
+    widget.photos = (Array.isArray(w.photos) ? w.photos : [])
+      .filter((ph) => ph && toImageUrl(ph.url))
+      .map((ph) => ({
+        id: ph.id ? String(ph.id) : uid(),
+        url: toImageUrl(ph.url),
+        caption: typeof ph.caption === "string" ? ph.caption : "",
+      }));
+    widget.fit = widget.fit === "contain" ? "contain" : "cover";
+    widget.interval = PHOTO_INTERVALS.includes(Number(w.interval)) ? Number(w.interval) : 10;
   }
   return widget;
 }
@@ -428,6 +442,7 @@ function applySettings(settings = state.settings) {
 function render() {
   applySettings();
   destroySortables();
+  stopPhotoTimers();
 
   renderTabs();
   const nodes = widgets().map(renderWidget);
@@ -486,6 +501,17 @@ function renderWidget(widget) {
       }, "＋"),
     );
   }
+  if (widget.type === "photo") {
+    tools.append(
+      h("button", {
+        type: "button",
+        class: "button button--small button--ghost",
+        title: "写真を追加",
+        "aria-label": "写真を追加",
+        onclick: () => addPhotoByUrl(widget),
+      }, "＋"),
+    );
+  }
   tools.append(
     h("button", {
       type: "button",
@@ -515,6 +541,7 @@ function renderWidgetBody(widget) {
     case "search": return renderSearch(widget);
     case "embed": return renderEmbed(widget);
     case "todo": return renderTodo(widget);
+    case "photo": return renderPhoto(widget);
     default: return null;
   }
 }
@@ -680,6 +707,152 @@ function renderEmbed(widget) {
   // 高さはタイル表示では段に合わせ、「中身に合わせる」表示のときだけこの値を使う
   frame.style.setProperty("--embed-height", `${Math.min(Math.max(Number(widget.height) || 400, 120), 1600)}px`);
   return frame;
+}
+
+/* ================================================================== */
+/* 写真                                                                 */
+/* ================================================================== */
+
+/** ウィジェットごとに表示中の写真の番号（保存しない表示状態） */
+const photoIndexes = new Map();
+const photoTimers = [];
+
+function stopPhotoTimers() {
+  while (photoTimers.length) clearInterval(photoTimers.pop());
+}
+
+function renderPhoto(widget) {
+  const photos = widget.photos;
+
+  // 編集モード：写真の一覧（並べ替え・キャプション・削除）
+  if (editing) {
+    const list = h("ul", { class: "photo-thumbs", dataset: { widgetId: widget.id } },
+      ...photos.map((ph) => h("li", { class: "photo-thumb", dataset: { id: ph.id } },
+        h("img", { class: "photo-thumb__img", src: ph.url, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }),
+        h("span", { class: "photo-thumb__tools" },
+          h("button", {
+            type: "button",
+            class: "button button--small",
+            title: "キャプションを編集",
+            "aria-label": "キャプションを編集",
+            onclick: async () => {
+              const caption = await askText({ title: "キャプション", label: "写真の説明（空欄で消す）", value: ph.caption, allowEmpty: true });
+              if (caption === null) return;
+              ph.caption = caption;
+              commit();
+            },
+          }, "✎"),
+          h("button", {
+            type: "button",
+            class: "button button--small button--danger",
+            title: "この写真を外す",
+            "aria-label": "この写真を外す",
+            onclick: () => {
+              widget.photos = widget.photos.filter((x) => x.id !== ph.id);
+              commit();
+            },
+          }, "×"),
+        ),
+      )),
+    );
+    return h("div", { class: "photo-edit" },
+      list,
+      h("p", { class: "widget__empty" }, "見出しの「＋」で画像の URL を追加。ドラッグで順番を変えられます"));
+  }
+
+  if (photos.length === 0) {
+    return h("p", { class: "widget__empty" },
+      "写真がありません。「編集」→ 見出しの「＋」で画像の URL を追加するか、ほかのタブの画像をここにドラッグしてください");
+  }
+
+  let index = Math.min(photoIndexes.get(widget.id) || 0, photos.length - 1);
+  const img = h("img", { class: "photo__img", alt: "", referrerpolicy: "no-referrer", decoding: "async" });
+  const caption = h("span", { class: "photo__caption" });
+  const error = h("span", { class: "photo__error", hidden: true }, "画像を読み込めませんでした");
+  const dots = h("span", { class: "photo__dots", "aria-hidden": "true" },
+    ...photos.map(() => h("span", { class: "photo__dot" })));
+  const link = h("a", { class: "photo__link", target: "_blank", rel: "noopener noreferrer", title: "元の画像を開く" }, img);
+
+  const show = (i) => {
+    index = (i + photos.length) % photos.length;
+    photoIndexes.set(widget.id, index);
+    const ph = photos[index];
+    error.hidden = true;
+    img.hidden = false;
+    img.src = ph.url;
+    img.alt = ph.caption || `写真 ${index + 1}`;
+    link.href = ph.url;
+    caption.textContent = ph.caption;
+    caption.hidden = !ph.caption;
+    [...dots.children].forEach((d, n) => d.classList.toggle("is-active", n === index));
+    // 次の写真を先に読み込んでおく
+    if (photos.length > 1) new Image().src = photos[(index + 1) % photos.length].url;
+  };
+  img.addEventListener("error", () => { img.hidden = true; error.hidden = false; });
+
+  const frame = h("div", {
+    class: `photo photo--${widget.fit}`,
+    role: "group",
+    "aria-roledescription": "スライドショー",
+    "aria-label": widget.title || "写真",
+  }, link, error, caption);
+
+  if (photos.length > 1) {
+    frame.append(
+      h("button", { type: "button", class: "photo__nav photo__nav--prev", "aria-label": "前の写真", onclick: () => show(index - 1) }, "‹"),
+      h("button", { type: "button", class: "photo__nav photo__nav--next", "aria-label": "次の写真", onclick: () => show(index + 1) }, "›"),
+      dots,
+    );
+    // 一定間隔で切り替え（マウスを乗せている間と、ページが隠れている間は止める）
+    if (widget.interval > 0) {
+      let hovering = false;
+      frame.addEventListener("mouseenter", () => { hovering = true; });
+      frame.addEventListener("mouseleave", () => { hovering = false; });
+      photoTimers.push(setInterval(() => {
+        if (!hovering && !document.hidden && frame.isConnected) show(index + 1);
+      }, widget.interval * 1000));
+    }
+  }
+  show(index);
+  return frame;
+}
+
+async function addPhotoByUrl(widget) {
+  const value = await askText({
+    title: "写真を追加",
+    label: "画像の URL（Google ドライブ・Dropbox の共有リンクも可）",
+    value: "",
+  });
+  if (!value) return;
+  const url = toImageUrl(value);
+  if (!url) {
+    showToast("http:// か https:// で始まる URL を入力してください");
+    return;
+  }
+  addPhoto(widget, url);
+}
+
+function addPhoto(widget, url) {
+  if (widget.photos.some((ph) => ph.url === url)) {
+    showToast("この写真はすでに追加されています");
+    return false;
+  }
+  widget.photos.push({ id: uid(), url, caption: "" });
+  photoIndexes.set(widget.id, widget.photos.length - 1); // 追加した写真を表示
+  commit();
+  return true;
+}
+
+/** ドロップされたデータから画像の URL を取り出す（<img src> を優先） */
+function readDroppedImage(dataTransfer) {
+  const html = dataTransfer.getData("text/html");
+  if (html) {
+    const img = new DOMParser().parseFromString(html, "text/html").querySelector("img[src]");
+    const src = img && toImageUrl(img.getAttribute("src"));
+    if (src) return src;
+  }
+  const link = readDroppedLink(dataTransfer);
+  return link ? toImageUrl(link.url) : null;
 }
 
 /* ================================================================== */
@@ -861,17 +1034,24 @@ function deleteTodoCategory(widget, cat) {
 /* 1 行の文字を入力してもらうダイアログ                                   */
 /* ================================================================== */
 
-function askText({ title, label, value }) {
+/**
+ * @returns {Promise<string|null>} 入力された文字。キャンセルなら null。
+ *   allowEmpty が true なら空欄で保存でき、そのときは ""。
+ */
+function askText({ title, label, value, allowEmpty = false }) {
   const input = el.textForm.elements.text;
   $("#text-dialog-title").textContent = title;
   $("#text-dialog-label").textContent = label;
   input.value = value || "";
+  input.required = !allowEmpty;
   el.textDialog.returnValue = "";
   el.textDialog.showModal();
   input.select();
   return new Promise((resolve) => {
     el.textDialog.addEventListener("close", () => {
-      resolve(el.textDialog.returnValue === "ok" ? input.value.trim() || null : null);
+      if (el.textDialog.returnValue !== "ok") return resolve(null);
+      const text = input.value.trim();
+      resolve(text || (allowEmpty ? "" : null));
     }, { once: true });
   });
 }
@@ -949,7 +1129,7 @@ document.addEventListener("dragover", (event) => {
   if (event.target.closest?.("input, textarea, dialog")) return; // 入力欄への文字のドロップはそのまま
   // ページ外へ移動してしまわないよう、どこでも既定の動作は止める
   event.preventDefault();
-  const target = event.target.closest?.(".widget--links, .widget--embed") || null;
+  const target = event.target.closest?.(".widget--links, .widget--embed, .widget--photo") || null;
   event.dataTransfer.dropEffect = target ? "copy" : "none";
   setDropTarget(target);
 });
@@ -963,9 +1143,20 @@ document.addEventListener("drop", (event) => {
   if (event.target.closest?.("input, textarea, dialog")) return;
   event.preventDefault();
   setDropTarget(null);
-  const target = event.target.closest?.(".widget--links, .widget--embed");
+  const target = event.target.closest?.(".widget--links, .widget--embed, .widget--photo");
   const widget = target && widgets().find((w) => w.id === target.dataset.id);
   if (!widget) return;
+
+  // 写真ウィジェット：ドロップされた画像を追加する
+  if (widget.type === "photo") {
+    const src = readDroppedImage(event.dataTransfer);
+    if (!src) {
+      showToast("画像の URL を読み取れませんでした");
+      return;
+    }
+    if (addPhoto(widget, src)) showToast(`「${widget.title || "写真"}」に写真を追加しました`);
+    return;
+  }
 
   const link = readDroppedLink(event.dataTransfer);
   if (!link) {
@@ -1065,6 +1256,23 @@ function setupSortables() {
           if (!widget) continue;
           widget.items = $$(".link-item", listEl).map((n) => all.get(n.dataset.id)).filter(Boolean);
         }
+        commit();
+      },
+    }));
+  }
+
+  // 写真の並べ替え
+  for (const thumbs of $$(".photo-thumbs", el.dashboard)) {
+    const widget = widgets().find((w) => w.id === thumbs.dataset.widgetId);
+    if (!widget) continue;
+    sortables.push(new Sortable(thumbs, {
+      ...common,
+      draggable: ".photo-thumb",
+      filter: "button",
+      preventOnFilter: false,
+      onEnd: () => {
+        const order = $$(".photo-thumb", thumbs).map((n) => n.dataset.id);
+        widget.photos.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
         commit();
       },
     }));
@@ -1195,6 +1403,8 @@ function openWidgetDialog(widgetId) {
   f.embedUrl.value = widget?.embedUrl || "";
   f.height.value = widget?.height || 400;
   f.timeZone.value = widget?.timeZone || "";
+  f.photoFit.value = widget?.fit || "cover";
+  f.photoInterval.value = String(widget?.interval ?? 10);
   el.widgetDelete.hidden = !widget;
   updateWidgetFormVisibility();
   el.widgetDialog.returnValue = "";
@@ -1220,6 +1430,7 @@ el.widgetDialog.addEventListener("close", () => {
     widget = { id: uid(), type: f.type.value };
     if (widget.type === "links") widget.items = [];
     if (widget.type === "note") widget.text = "";
+    if (widget.type === "photo") widget.photos = [];
     if (widget.type === "todo") {
       widget.categories = DEFAULT_TODO_CATEGORIES.map((name) => ({ id: uid(), name }));
       widget.items = [];
@@ -1239,6 +1450,11 @@ el.widgetDialog.addEventListener("close", () => {
     widget.height = Number(f.height.value) || 400;
   }
   if (widget.type === "clock") widget.timeZone = f.timeZone.value.trim();
+  if (widget.type === "photo") {
+    widget.fit = f.photoFit.value === "contain" ? "contain" : "cover";
+    const interval = Number(f.photoInterval.value);
+    widget.interval = PHOTO_INTERVALS.includes(interval) ? interval : 10;
+  }
 
   // 別のタブへ移す
   const target = state.pages.find((p) => p.id === f.page.value);
@@ -1259,7 +1475,8 @@ el.widgetDelete.addEventListener("click", () => {
   const widget = widgets().find((w) => w.id === editingWidgetId);
   if (!widget) return;
   const extra = widget.type === "links" && widget.items.length ? `（リンク ${widget.items.length} 件も消えます）`
-    : widget.type === "todo" && widget.items.length ? `（ToDo ${widget.items.length} 件も消えます）` : "";
+    : widget.type === "todo" && widget.items.length ? `（ToDo ${widget.items.length} 件も消えます）`
+    : widget.type === "photo" && widget.photos.length ? `（登録した写真 ${widget.photos.length} 枚の URL も消えます）` : "";
   if (!confirm(`「${widget.title || WIDGET_TYPES[widget.type]}」を削除しますか？${extra}`)) return;
   page().widgets = widgets().filter((w) => w.id !== editingWidgetId);
   el.widgetDialog.close("deleted");
