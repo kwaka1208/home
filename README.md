@@ -123,7 +123,29 @@ Google Cloud で OAuth クライアントを作る必要はありません（Fir
    ```
 
 5. GitHub で自分のリポジトリの `public/js/firebase-config.js` を開き、鉛筆アイコン（Edit this file）を押します。
-6. `YOUR_...` となっている 6 つの値を、控えた値に書き換えて **Commit changes** を押します。
+6. `YOUR_...` となっている 6 つの値**だけ**を、控えた値に書き換えて **Commit changes** を押します。
+
+> **ファイル全体を Firebase コンソールの見本で置き換えないでください。** 見本の
+> `const firebaseConfig = {` や `import { initializeApp } ...` をそのまま貼ると、画面が真っ白になります。
+> 書き換えた後は、次の形になっていれば正解です（`"..."` の部分があなたの値）。
+>
+> ```js
+> export const firebaseConfig = {
+>   apiKey: "...",
+>   authDomain: "...",
+>   projectId: "...",
+>   storageBucket: "...",
+>   messagingSenderId: "...",
+>   appId: "...",
+> };
+>
+> export const FIREBASE_SDK_VERSION = "13.1.0";
+>
+> export const USE_EMULATORS_ON_LOCALHOST = false;
+> ```
+>
+> - 1 行目は `export const firebaseConfig = {` です（`export` が必要で、`const firebaseConfig` を二重にしない）
+> - 下の `FIREBASE_SDK_VERSION` と `USE_EMULATORS_ON_LOCALHOST` の 2 行も消さずに残します
 
 コミットすると、手順 2 で設定した GitHub Actions が自動で動き、1〜2 分で公開されます
 （リポジトリの **Actions** タブで進み具合を確認できます）。
@@ -143,15 +165,24 @@ Google Cloud で OAuth クライアントを作る必要はありません（Fir
 
 ブラウザのホームページやブックマークに登録しておくと便利です。
 
-### （任意）API キーの使える場所を絞る
+### 8. API キーの使える場所を絞る（おすすめ）
 
-`apiKey` は公開されても問題ない値ですが、他のサイトから使われないように制限をかけておくと、より安心です。
+`apiKey` は公開されても問題ない値ですが、他のサイトや他の用途に使われないように制限をかけておくと安心です。
+手順 5 でコミットすると GitHub から「Publicly leaked secret」という警告が届きますが（下の
+「GitHub から『Publicly leaked secret』の警告が届いたとき」を参照）、この制限をかけておけば心配いりません。
 
-1. [Google Cloud コンソール](https://console.cloud.google.com/apis/credentials) で、Firebase のプロジェクトを選びます。
-2. **API とサービス → 認証情報** の **API キー**（Browser key）を開きます。
-3. **アプリケーションの制限** を **ウェブサイト** にし、次の 2 つを追加して保存します。
+1. [Google Cloud コンソールの認証情報](https://console.cloud.google.com/apis/credentials) を開き、上部で Firebase のプロジェクトを選びます。
+2. **API キー** の一覧から、Firebase が作ったキー（通常は「Browser key (auto created by Firebase)」）を開きます。
+3. **アプリケーションの制限** を **ウェブサイト** にし、次を追加します。
    - `https://<GitHub のユーザー名>.github.io/*`
    - `https://<プロジェクト ID>.firebaseapp.com/*`（ログイン画面で使われます）
+   - 手元で試す場合は `http://localhost/*` と `http://127.0.0.1/*` も
+4. **API の制限** を **キーを制限** にし、次の 3 つを選びます。
+   - Identity Toolkit API（ログイン）
+   - Token Service API（ログイン状態の維持）
+   - Cloud Firestore API（データの保存）
+5. 保存して数分待ってから、ダッシュボードでログインと保存ができるか確認します。
+   うまくいかなくなったら、いったん制限を外して、許可したサイトや API に漏れがないか見直してください。
 
 ---
 
@@ -480,11 +511,38 @@ Firestore の `dashboards/{ユーザー ID}` ドキュメントに、次の形�
 | ページが 404 になる | 手順 2 で Pages の Source を **GitHub Actions** にしたか。Actions タブで「Deploy to GitHub Pages」が成功しているか（失敗していたら **Run workflow** で再実行） |
 | 「承認済みドメインに登録されていません」 | 手順 6 で `<ユーザー名>.github.io` を追加したか |
 | 「Google ログインが有効になっていません」「Authentication が開始されていません」 | 手順 3 で Authentication を始め、Google を有効にしたか |
+| 画面が真っ白で、左上に「Dashboard」としか出ない | ブラウザの開発者ツール（Mac は ⌥⌘I、Windows は F12）の **Console** に出ている赤いエラーを確認。下の 2 行もあわせて確認 |
+| Console に `does not provide an export named 'firebaseConfig'`（または `FIREBASE_SDK_VERSION` など） | `firebase-config.js` を Firebase コンソールの見本で丸ごと置き換えていないか。手順 5 の「正解の形」に直す |
+| Console に `Unexpected identifier` などの `SyntaxError`（`firebase-config.js` で発生） | `const firebaseConfig = {` が二重になっている、カッコや `"` の閉じ忘れがないか |
 | 「apiKey が正しくありません」 | `firebase-config.js` の値に貼り間違いがないか |
+| 手順 8 の制限をかけたらログインや保存ができなくなった | 許可したサイトに `<ユーザー名>.github.io` と `<プロジェクト ID>.firebaseapp.com` の両方があるか、API の制限に 3 つの API が入っているか |
 | 「〇〇 ではこのダッシュボードを使えません」 | 手順 4 のルールの `allowedEmails()` にそのアドレスが**小文字で**入っているか、ルールを**公開**したか |
 | 「Firestore のデータベースが見つかりません」 | 手順 4 で Firestore Database を作成したか |
 | 「ポップアップがブロックされました」 | ブラウザでこのサイトのポップアップを許可して、もう一度ログイン |
-| 変更が反映されない | GitHub Pages の反映には 1〜2 分かかります。ブラウザを再読み込みしてください |
+| 変更が反映されない | Actions タブで最新の「Deploy to GitHub Pages」が成功しているか確認し、キャッシュを無視して再読み込み（Mac は ⌘⇧R、Windows は Ctrl+Shift+R）。GitHub Pages のファイルはブラウザに最大 10 分ほどキャッシュされます |
+| GitHub から「Publicly leaked secret」の警告が届いた | 下の「GitHub から『Publicly leaked secret』の警告が届いたとき」を参照 |
+
+### GitHub から「Publicly leaked secret」の警告が届いたとき
+
+`firebase-config.js` に `apiKey` をコミットすると、GitHub のシークレットスキャンが Google の API キーとして検出し、
+「Publicly leaked secret」という警告を出します。GitHub は Firebase 用のキーかどうかを区別しないためです。
+
+Firebase のウェブ用 API キーは、画面のプログラムに埋め込んで公開する前提の値です。
+データを守っているのは Firestore のセキュリティルールなので、キーが知られてもダッシュボードの中身は読まれません。
+キーを作り直しても、新しいキーをコミットすればまた同じ警告が出ます。
+
+1. 手順 8 の制限をかけます（まだの場合）。
+2. 警告の画面で **Close as → Won't fix** を選び、コメントに「Firebase のウェブ用キー。公開前提で、使えるサイトと API を制限済み」などと書いて閉じます。
+
+キーを作り直したい場合は、次の順で進めます（逆の順にすると、ログインできない時間ができます）。
+
+1. 同じ認証情報の画面で **認証情報を作成 → API キー** を押し、手順 8 と同じ制限をかけます。
+2. `firebase-config.js` の `apiKey` を新しいキーに書き換えてコミットし、ログインと保存ができることを確認します。
+3. 古いキーを削除し、警告を **Close as → Revoked** で閉じます。
+
+念のため、Firebase コンソールの **Authentication → ユーザー** に知らないアカウントがないか、
+**Firestore → 使用状況** で読み書きの回数が急に増えていないかも確認しておくと安心です
+（知らないアカウントがあっても、ルールによりデータは読めません。不要なら削除してください）。
 
 ## ライセンス
 
