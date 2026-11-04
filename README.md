@@ -439,9 +439,27 @@ wrangler.jsonc              Cloudflare Workers の設定
 | 「Cloudflare Access のトークンがありません」 | 手順 5 の Access が `workers.dev` の URL にかかっているか |
 | 「このアカウントには許可がありません」 | `ALLOWED_EMAILS` にログインしたアドレスが入っているか |
 | Google のログインで「アクセスをブロック」と出る | Google の OAuth 同意画面のテストユーザーに自分を追加したか |
+| Google のログインで「エラー 401: deleted_client」（The OAuth client was deleted）と出る | 下の「deleted_client エラーが出るとき」を参照 |
 | 「サーバーに保存できないため、このブラウザにだけ保存しています」 | `index.html` を直接開いている、または API に届いていない |
 | しばらく放置したら保存できない | Access のログインの期限切れです。ページを再読み込みしてください |
 | デプロイで KV の作成に失敗する | **Workers & Pages → KV** でネームスペースを作り、`wrangler.jsonc` の `kv_namespaces` に `"id": "<作った ID>"` を追記してください |
+
+### deleted_client エラーが出るとき
+
+手順 3 の **Test** やログインで「アクセスをブロック: 認証エラーです」「エラー 401: deleted_client」と出る場合は、
+Cloudflare に登録したクライアント ID の OAuth クライアントが、Google Cloud 側に存在しない（削除済み）状態です。
+クライアントを作り直す前の古い ID が残っている、別のプロジェクトのクライアントを使っている、などで起こります。
+
+1. [Google Cloud Console](https://console.cloud.google.com/) の上部で、手順 3 で使ったプロジェクトが選ばれているか確認します。
+2. **API とサービス → 認証情報**（または **Google Auth Platform → クライアント**）に、「ウェブ アプリケーション」のクライアントがあるか確認します。
+3. **Zero Trust → Integrations → Identity providers → Google → Edit** の **App ID** が、そのクライアント ID と完全に同じか比べます。
+4. 違っていれば、正しいクライアント ID と、同じクライアントのシークレットを登録し直して保存します。
+   クライアントが見つからなければ、手順 3 の「Google Cloud 側」をやり直して新しく作ります
+   （削除から 30 日以内なら、認証情報の画面から復元もできます）。
+5. もう一度 **Test** を押します。作り直した直後は、反映に数分かかることがあります。
+
+> クライアント シークレットを全文表示できるのは、作成した直後だけです。控え忘れたときは、
+> そのクライアントの画面で新しいシークレットを追加し、それを Cloudflare に登録してください。
 
 ## ライセンス
 
