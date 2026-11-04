@@ -9,6 +9,7 @@
  * firebase-config.js が未設定のときは「ローカルモード」になり、
  * ブラウザの localStorage にだけ保存します。
  */
+import { t } from "./i18n.js";
 import {
   firebaseConfig,
   FIREBASE_SDK_VERSION,
@@ -61,8 +62,13 @@ export function readAppearance() {
 }
 
 function rememberAppearance(data) {
-  const { mode, preset, density } = data?.settings || {};
-  writeLocal("appearance", { mode, preset, density });
+  writeAppearance(data?.settings);
+}
+
+/** 見た目と言語の設定だけを、この端末に覚えておく（ログイン前の画面や、ライト / ダークの切り替えで使う） */
+export function writeAppearance(settings) {
+  const { language, mode, preset, density } = settings || {};
+  writeLocal("appearance", { language, mode, preset, density });
 }
 
 /* ------------------------------------------------------------------ */
@@ -83,7 +89,7 @@ export async function initFirebase() {
       import(sdkUrl("firestore")),
     ]);
   } catch {
-    throw new StorageError("Firebase のプログラムを読み込めませんでした。ネットワークを確認してください。");
+    throw new StorageError(t("error.sdk"));
   }
   const app = appMod.initializeApp(firebaseConfig);
   const auth = authMod.getAuth(app);
@@ -188,7 +194,7 @@ async function tokenLifetime(token) {
  * （ブラウザはクリック以外で開いたポップアップをブロックする）。
  */
 export async function connectGoogle(scopes) {
-  if (!canUseGoogleApi()) throw new StorageError("ログインしていません");
+  if (!canUseGoogleApi()) throw new StorageError(t("error.notSignedIn"));
   const previous = readLocal("google-token");
   const all = [...new Set([...(previous?.uid === currentUser.uid ? previous.scopes : []), ...scopes])];
   const provider = new fb.authMod.GoogleAuthProvider();
@@ -200,12 +206,12 @@ export async function connectGoogle(scopes) {
   } catch (err) {
     if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") return null;
     if (err?.code === "auth/user-mismatch") {
-      throw new StorageError("ダッシュボードにログインしているのと同じ Google アカウントを選んでください。");
+      throw new StorageError(t("error.sameAccount"));
     }
     throw new StorageError(describeError(err));
   }
   const token = fb.authMod.GoogleAuthProvider.credentialFromResult(result)?.accessToken;
-  if (!token) throw new StorageError("Google からアクセス権を受け取れませんでした");
+  if (!token) throw new StorageError(t("error.noGoogleToken"));
   const startedAt = Date.now();
   const lifetime = await tokenLifetime(token);
   writeLocal("google-token", { token, scopes: all, uid: currentUser.uid, expiresAt: startedAt + lifetime });
@@ -218,7 +224,7 @@ export async function connectGoogle(scopes) {
 
 export async function loadDefault() {
   const res = await fetch(DEFAULT_DASHBOARD_URL, { cache: "no-store" });
-  if (!res.ok) throw new Error("default-dashboard.json を読み込めません");
+  if (!res.ok) throw new Error(`default-dashboard.json: ${res.status}`);
   return res.json();
 }
 
@@ -229,7 +235,7 @@ export async function load() {
   if (!isConfigured) {
     return { data: readLocal("data:local") || (await loadDefault()), mode: "local" };
   }
-  if (!currentUser) throw new StorageError("ログインしていません");
+  if (!currentUser) throw new StorageError(t("error.notSignedIn"));
 
   const { doc, getDoc } = fb.storeMod;
   let snap;
@@ -246,7 +252,7 @@ export async function load() {
   try {
     data = JSON.parse(snap.data().json);
   } catch {
-    throw new StorageError("保存されているデータを読み取れませんでした");
+    throw new StorageError(t("error.unreadableData"));
   }
   writeLocal(`data:${currentUser.uid}`, data);
   rememberAppearance(data);
@@ -259,7 +265,7 @@ export async function save(data, mode) {
     writeLocal("data:local", data);
     return;
   }
-  if (!currentUser) throw new StorageError("ログインの有効期限が切れました。ページを再読み込みしてください。");
+  if (!currentUser) throw new StorageError(t("error.sessionExpired"));
   writeLocal(`data:${currentUser.uid}`, data);
 
   const { doc, setDoc, serverTimestamp } = fb.storeMod;
@@ -279,30 +285,29 @@ export async function save(data, mode) {
 
 function describeError(err) {
   const code = err?.code || "";
-  const email = currentUser?.email || "このアカウント";
+  const email = currentUser?.email || t("error.thisAccount");
   switch (code) {
     case "permission-denied":
-      return `${email} ではこのダッシュボードを使えません。別のアカウントでログインし直してください。` +
-        "（持ち主の方は、Firestore のルールに書いたメールアドレスを確認してください。）";
+      return t("error.permissionDenied", { email });
     case "unavailable":
-      return "Firestore に接続できません。ネットワークを確認してください。";
+      return t("error.unavailable");
     case "not-found":
     case "failed-precondition":
-      return "Firestore のデータベースが見つかりません。Firebase コンソールで Firestore Database を作成したか確認してください。";
+      return t("error.noDatabase");
     case "auth/unauthorized-domain":
-      return `このドメイン（${location.hostname}）が Firebase の承認済みドメインに登録されていません（README の手順 6）。`;
+      return t("error.unauthorizedDomain", { host: location.hostname });
     case "auth/popup-blocked":
-      return "ログイン用のポップアップがブロックされました。ブラウザでポップアップを許可してから、もう一度ログインしてください。";
+      return t("error.popupBlocked");
     case "auth/operation-not-allowed":
-      return "Firebase の Authentication で Google ログインが有効になっていません（README の手順 3）。";
+      return t("error.googleDisabled");
     case "auth/configuration-not-found":
-      return "Firebase の Authentication が開始されていません（README の手順 3）。";
+      return t("error.authNotStarted");
     case "auth/invalid-api-key":
     case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
-      return "firebase-config.js の apiKey が正しくありません（README の手順 5）。";
+      return t("error.invalidApiKey");
     case "auth/network-request-failed":
-      return "ネットワークに接続できません。";
+      return t("error.network");
     default:
-      return `エラーが発生しました（${code || err?.message || "不明"}）`;
+      return t("error.unknown", { detail: code || err?.message || t("error.unknownDetail") });
   }
 }

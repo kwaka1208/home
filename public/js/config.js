@@ -7,15 +7,15 @@
  * note は見本の下に小さく表示される補足（任意）。
  */
 export const THEME_PRESETS = [
-  { id: "", label: "標準" },
-  { id: "glass", label: "グラス" },
-  { id: "brutal", label: "ブルータル" },
-  { id: "terminal", label: "ターミナル", note: "常にダーク" },
-  { id: "midnight", label: "ミッドナイト" },
-  { id: "editorial", label: "エディトリアル" },
-  { id: "indigo", label: "藍" },
-  { id: "washi", label: "和紙" },
-  { id: "mono", label: "モノクロ" },
+  { id: "", label: "theme.default" },
+  { id: "glass", label: "theme.glass" },
+  { id: "brutal", label: "theme.brutal" },
+  { id: "terminal", label: "theme.terminal", note: "theme.terminalNote" },
+  { id: "midnight", label: "theme.midnight" },
+  { id: "editorial", label: "theme.editorial" },
+  { id: "indigo", label: "theme.indigo" },
+  { id: "washi", label: "theme.washi" },
+  { id: "mono", label: "theme.mono" },
 ];
 
 /** 初めて開いたとき（保存データがないとき）に読み込むレイアウト */

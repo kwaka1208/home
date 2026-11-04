@@ -738,6 +738,7 @@
   }
   .cal-events {
     display: grid;
+    grid-template-columns: minmax(0, 1fr); /* 幅が狭いときも、予定の行がはみ出さず件名が「…」で縮む */
     gap: 2px;
     margin: 0;
     padding: 0;
@@ -745,6 +746,7 @@
   }
   .cal-event {
     --event-color: var(--widget-accent);
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: var(--space-1);
