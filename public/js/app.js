@@ -229,6 +229,7 @@ function renderWidget(widget) {
   const section = h("section", {
     class: `widget widget--${widget.type}`,
     dataset: { id: widget.id, size: widget.size, type: widget.type },
+    "data-accent": isHexColor(widget.accent) ? "" : null,
     "aria-label": widget.title || WIDGET_TYPES[widget.type],
   });
   // カスタムプロパティは Object.assign では入らないので setProperty で

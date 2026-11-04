@@ -10,7 +10,8 @@
  *   .dialog            編集用ダイアログ
  *
  * 編集モードのときは <html data-editing> が付きます。
- * ウィジェットごとの色は style="--widget-accent: ..." で渡されます。
+ * ウィジェットごとの色は style="--widget-accent: ..." で渡され、
+ * 色を設定したウィジェットには data-accent 属性が付きます。
  */
 @layer components {
   /* ---------- ボタン ---------- */
@@ -125,7 +126,6 @@
     min-width: 0;
     background: var(--color-surface);
     border: var(--border-width) solid var(--color-border);
-    border-top: 3px solid var(--widget-accent);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-widget);
     overflow: hidden;
@@ -147,6 +147,18 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* 色を設定したウィジェットだけ、見出しの前に小さな丸で色を示す */
+  .widget[data-accent] .widget__title::before {
+    content: "";
+    display: inline-block;
+    width: 0.5em;
+    height: 0.5em;
+    margin-right: 0.5em;
+    border-radius: 50%;
+    background: var(--widget-accent);
+    vertical-align: 0.1em;
   }
 
   .widget__handle {
@@ -176,7 +188,7 @@
   /* 編集モード */
   [data-editing] .widget__handle,
   [data-editing] .widget__tools { display: inline-flex; }
-  [data-editing] .widget { border-style: dashed; border-top-style: solid; }
+  [data-editing] .widget { border-style: dashed; }
 
   /* ドラッグ中の見た目（SortableJS が付けるクラス） */
   .is-ghost { opacity: 0.35; }

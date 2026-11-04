@@ -251,7 +251,7 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | `--grid-columns` / `--grid-gap` | 広い画面での列数 / ウィジェットの間隔 |
 | `--widget-padding` | ウィジェット内側の余白 |
 | `--link-tile-min` / `--icon-size` / `--icon-size-tile` | タイル 1 個の最小幅 / アイコンの大きさ |
-| `--widget-accent` | ウィジェットごとの色（✎ で設定した色が入る） |
+| `--widget-accent` | ウィジェットごとの色（✎ で設定した色が入る。未設定なら `--color-accent`） |
 
 ### 部品ごとに変える
 
@@ -272,7 +272,10 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
   .widget--clock .clock__time { color: var(--widget-accent); }
 
   /* 特定のウィジェットだけ変える（data-id は書き出した JSON で確認できます） */
-  .widget[data-id="google"] { border-top-width: 6px; }
+  .widget[data-id="google"] { background: var(--color-surface-muted); }
+
+  /* カードの上辺をウィジェットの色で塗る */
+  .widget { border-top: 3px solid var(--widget-accent); }
 
   /* 編集モードのときだけ効かせる */
   [data-editing] .widget { outline: 2px dashed var(--widget-accent); }
@@ -285,6 +288,7 @@ tokens  <  base  <  layout  <  components  <  themes  <  custom
 | `.dashboard` | ウィジェットを並べるグリッド |
 | `.widget`, `.widget--links` / `--note` / `--clock` / `--search` / `--embed` | ウィジェット（種類別） |
 | `.widget[data-size="s"]`（`m` `l` `xl`） | 幅ごと |
+| `.widget[data-accent]` | ✎ で色を設定したウィジェット（見出しの前に色の丸が付く） |
 | `.widget__header`, `.widget__title`, `.widget__body` | ウィジェットの見出し・本文 |
 | `.link-list--list`, `.link-list--grid` | リンクのリスト表示 / タイル表示 |
 | `.link`, `.link__icon`, `.link__title`, `.link__desc` | リンク 1 件 |
