@@ -865,9 +865,10 @@
   .timer-fields label[hidden] { display: none; }
 
   /* ---------- 世界時計 ---------- */
+  /* 1 段（タイル 1 つ分の高さ）に 2 都市が収まるよう、行の高さを詰めている */
   .wclock {
     display: grid;
-    gap: var(--space-1);
+    gap: 0;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -878,10 +879,12 @@
     grid-template-areas: "icon label time" "icon diff time";
     align-items: center;
     column-gap: var(--space-2);
-    padding: var(--space-1) 0;
+    padding: 2px 0;
+    line-height: 1.25;
     border-bottom: var(--border-width) solid var(--color-border);
   }
   .wclock__row:last-child { border-bottom: 0; }
+  .widget--worldclock .widget__body { padding-top: var(--space-1); } /* フォントの違いで溢れないよう余裕を持たせる */
   .wclock__icon { grid-area: icon; font-size: 1.2rem; }
   .wclock__label { grid-area: label; font-weight: var(--font-weight-bold); font-size: var(--font-size-sm); }
   .wclock__diff { grid-area: diff; color: var(--color-text-muted); font-size: var(--font-size-xs); }
@@ -889,6 +892,7 @@
     grid-area: time;
     font-family: var(--clock-font);
     font-size: 1.6rem;
+    line-height: 1.1;
     font-weight: var(--clock-weight);
     font-variant-numeric: tabular-nums;
     color: var(--clock-color);
