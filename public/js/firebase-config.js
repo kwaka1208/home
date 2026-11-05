@@ -24,7 +24,7 @@ export const firebaseConfig = {
  * - true ：firestore.rules の allowedEmails() に書いた全員で、同じダッシュボードを見て編集する
  *          （誰かが変更すると、開いている全員の画面にすぐ反映されます）
  */
-export const SHARED_DASHBOARD = false;
+export const SHARED_DASHBOARD = true;
 
 /** 読み込む Firebase JavaScript SDK のバージョン（https://www.gstatic.com/firebasejs/ から読み込みます） */
 export const FIREBASE_SDK_VERSION = "13.1.0";
