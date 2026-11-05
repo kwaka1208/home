@@ -332,28 +332,65 @@ function widgets() {
   return page().widgets;
 }
 
-/** 開くタブを決める：URL の #タブID → この端末で最後に開いたタブ → 先頭 */
+/*
+ * URL の # の後ろには、タブの名前を入れる（例：…/#ホーム）。
+ * 同じ名前のタブが複数あるときは、2 つ目から「名前-2」「名前-3」…。
+ * 以前のブックマーク（# の後ろがタブの ID）も、そのまま開ける。
+ */
+function pageSlug(target) {
+  const base = (target.name || "").trim().replace(/\s+/g, "-") || target.id;
+  let n = 0;
+  for (const p of state.pages) {
+    if (((p.name || "").trim().replace(/\s+/g, "-") || p.id) === base) n += 1;
+    if (p === target) break;
+  }
+  return n > 1 ? `${base}-${n}` : base;
+}
+
+/** URL の # の後ろ（タブの名前・ID）から、タブの ID を探す */
+function pageIdFromHash(hash = location.hash) {
+  let key = hash.replace(/^#/, "");
+  try { key = decodeURIComponent(key); } catch { /* そのまま */ }
+  if (!key) return null;
+  return state.pages.find((p) => pageSlug(p) === key)?.id
+    || state.pages.find((p) => p.id === key)?.id
+    || null;
+}
+
+/** 今のタブを URL の # に入れる */
+function updatePageHash() {
+  const slug = pageSlug(page());
+  let current = location.hash.slice(1);
+  try { current = decodeURIComponent(current); } catch { /* そのまま */ }
+  if (current === slug) return;
+  history.replaceState(null, "", `#${encodeURIComponent(slug)}`);
+}
+
+/** 開くタブを決める：URL の #タブ名 → この端末で最後に開いたタブ → 先頭 */
 function pickInitialPage() {
-  const fromHash = decodeURIComponent(location.hash.slice(1));
   let remembered = null;
   try { remembered = localStorage.getItem(ACTIVE_TAB_KEY); } catch { /* 使えない環境 */ }
-  const found = [fromHash, remembered].find((id) => id && state.pages.some((p) => p.id === id));
+  const found = pageIdFromHash() || (state.pages.some((p) => p.id === remembered) ? remembered : null);
   activePageId = found || state.pages[0].id;
+  // 以前の形（# の後ろが ID）で開いたときは、名前の形に書き換えておく
+  if (location.hash) updatePageHash();
 }
 
 function switchPage(id, { updateHash = true } = {}) {
   if (!state.pages.some((p) => p.id === id)) return;
   activePageId = id;
   try { localStorage.setItem(ACTIVE_TAB_KEY, id); } catch { /* 使えない環境 */ }
-  if (updateHash) history.replaceState(null, "", `#${encodeURIComponent(id)}`);
+  if (updateHash) updatePageHash();
   el.filter.value = "";
   render();
 }
 
 window.addEventListener("hashchange", () => {
   if (!state) return;
-  const id = decodeURIComponent(location.hash.slice(1));
-  if (id && id !== activePageId) switchPage(id, { updateHash: false });
+  const id = pageIdFromHash();
+  if (!id) return;
+  if (id !== activePageId) switchPage(id); // 以前の形（ID）で来たときは、名前の形に書き換わる
+  else updatePageHash();
 });
 
 function renderTabs() {
@@ -458,6 +495,7 @@ async function renamePage(p) {
   if (!name) return;
   p.name = name;
   commit();
+  if (p.id === activePageId) updatePageHash(); // URL の # もタブの新しい名前に
 }
 
 function deletePage(p) {
@@ -468,7 +506,7 @@ function deletePage(p) {
   state.pages = state.pages.filter((x) => x.id !== p.id);
   if (activePageId === p.id) {
     activePageId = state.pages[0].id;
-    history.replaceState(null, "", `#${encodeURIComponent(activePageId)}`);
+    updatePageHash();
   }
   commit();
 }
@@ -610,6 +648,7 @@ function applyRemote(data, json, { merged = false } = {}) {
     if (state.pages.some((p) => p.id === current)) activePageId = current;
     else pickInitialPage();
     render();
+    if (location.hash) updatePageHash(); // ほかの人がタブの名前を変えたとき
     setStatus(t("status.synced"));
   }
   storage.setBase(json);
