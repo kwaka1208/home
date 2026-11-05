@@ -51,13 +51,14 @@ const WIDGET_TYPES = {
   worldclock: "widget.worldclock",
   habit: "widget.habit",
   github: "widget.github",
+  yamato: "widget.yamato",
 };
 const DEFAULT_TODO_CATEGORIES = ["todo.category.work", "todo.category.private"]; // 文言のキー
 /** ウィジェットの高さ（段数）の選択肢と、種類ごとの初期値 */
 const ROW_OPTIONS = [1, 2, 3, 4];
 const DEFAULT_ROWS = {
   links: 2, note: 2, clock: 1, search: 1, embed: 2, todo: 3, photo: 2, calendar: 3, mail: 1,
-  weather: 2, timer: 2, worldclock: 2, habit: 2, github: 3,
+  weather: 2, timer: 2, worldclock: 2, habit: 2, github: 3, yamato: 2,
 };
 /** Google の API を使うウィジェット */
 const GOOGLE_WIDGETS = ["calendar", "mail"];
@@ -119,7 +120,7 @@ const DEFAULT_SETTINGS = {
   layout: "tile", // "tile"：段で高さを指定してタイル状に並べる / "flow"：中身の高さに合わせる
   openInNewTab: true,
   useFavicons: true,
-  autoRenewGoogle: true, // カレンダー・Gmail の連携を、画面を操作したときに自動で延長する
+  autoRenewGoogle: false, // カレンダー・Gmail の連携を、画面を操作したときに自動で延長する（ポップアップが一瞬開くので初期値はオフ）
 };
 const DEFAULT_SEARCH_URL = "https://www.google.com/search?q=%s";
 
@@ -674,6 +675,8 @@ function withPersonal(data) {
   sharedPersonal = Object.fromEntries(storage.PERSONAL_KEYS.map((k) => [k, data.settings[k]]));
   const mine = storage.readPersonal();
   for (const k of storage.PERSONAL_KEYS) if (mine[k] != null) data.settings[k] = mine[k];
+  // 自動延長は、本人がまだ選んでいなければオフ（共有のデータの値は使わない）
+  if (mine.autoRenewGoogle == null) data.settings.autoRenewGoogle = false;
   return data;
 }
 
@@ -986,6 +989,7 @@ function renderWidgetBody(widget) {
     case "worldclock": return renderWorldClock(widget);
     case "habit": return renderHabit(widget);
     case "github": return renderGitHub(widget);
+    case "yamato": return renderYamato(widget);
     default: return renderAddonWidget(widget);
   }
 }
@@ -1253,6 +1257,134 @@ function renderSearch(widget) {
     if (url) window.open(url, state.settings.openInNewTab ? "_blank" : "_self", "noopener");
   });
   return form;
+}
+
+/* ================================================================== */
+/* 荷物の追跡（ヤマト運輸）                                               */
+/* ================================================================== */
+/*
+ * 送り状（伝票）番号から、ヤマト運輸の荷物状況お問い合わせの URL を作る（1 つの URL に番号 1 件）。
+ * 番号は 1 回に 10 件まで（空白・カンマ・改行で区切る）。最近調べた番号は、ウィジェットに 10 件まで残す（保存データに入る）。
+ */
+const YAMATO_URL = "https://jizen.kuronekoyamato.co.jp/jizen/servlet/crjz.b.NQ0010?id=";
+const YAMATO_MAX = 10;
+const YAMATO_RECENT = 10;
+
+/** 入力から送り状番号を取り出す（数字だけにする。10〜12 桁のもの） */
+function parseTrackingNumbers(text) {
+  const numbers = String(text).split(/[\s,、，]+/)
+    .map((part) => part.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[^0-9]/g, ""))
+    .filter(Boolean);
+  const valid = numbers.filter((n) => n.length >= 10 && n.length <= 12);
+  const invalid = numbers.filter((n) => n.length < 10 || n.length > 12);
+  return { valid: [...new Set(valid)].slice(0, YAMATO_MAX), invalid };
+}
+
+/** 12 桁の番号は、最後の 1 桁が「前の 11 桁を 7 で割った余り」になっている（打ち間違いの目安） */
+function trackingCheckDigitOk(n) {
+  if (n.length !== 12) return true;
+  return Number(BigInt(n.slice(0, 11)) % 7n) === Number(n[11]);
+}
+
+/** 1234-5678-9012 のように 4 桁ずつ区切って表示 */
+function formatTrackingNumber(n) {
+  return n.replace(/(\d{4})(?=\d)/g, "$1-");
+}
+
+/** 送り状番号の追跡 URL */
+function yamatoUrl(number) {
+  return YAMATO_URL + encodeURIComponent(number);
+}
+
+function openYamato(number) {
+  window.open(yamatoUrl(number), state.settings.openInNewTab ? "_blank" : "_self", "noopener");
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast(t("yamato.copied"));
+  } catch {
+    showToast(t("yamato.copyFailed"));
+  }
+}
+
+function renderYamato(widget) {
+  const newTab = state.settings.openInNewTab;
+  const input = h("input", {
+    class: "input", name: "tracking", inputmode: "numeric", autocomplete: "off",
+    placeholder: t("yamato.placeholder"), "aria-label": t("yamato.label"),
+  });
+  const note = h("p", { class: "yamato__note", "aria-live": "polite" });
+  const urls = h("ul", { class: "yamato__urls" });
+  const urlRow = (number) => h("li", { class: "yamato__url-row" },
+    h("a", { class: "yamato__url", href: yamatoUrl(number), target: newTab ? "_blank" : null, rel: "noopener noreferrer", title: yamatoUrl(number) },
+      yamatoUrl(number)),
+    h("button", { type: "button", class: "button button--small", onclick: () => copyText(yamatoUrl(number)) }, t("yamato.copy")));
+
+  /** 入力を見て、作った URL とお知らせを出す */
+  const check = () => {
+    const { valid, invalid } = parseTrackingNumbers(input.value);
+    const messages = [];
+    if (input.value.trim() && !valid.length) messages.push(t("yamato.invalid"));
+    if (invalid.length && valid.length) messages.push(t("yamato.skipped", { n: invalid.length }));
+    const suspicious = valid.filter((n) => !trackingCheckDigitOk(n));
+    if (suspicious.length) messages.push(t("yamato.checkDigit", { numbers: suspicious.map(formatTrackingNumber).join(", ") }));
+    note.textContent = messages.join(" ");
+    note.hidden = !messages.length;
+    urls.replaceChildren(...valid.map(urlRow));
+    urls.hidden = !valid.length;
+    return valid;
+  };
+  input.addEventListener("input", check);
+  check();
+
+  const remember = (numbers) => {
+    const recent = (widget.recent || []).filter((r) => !numbers.includes(r.number));
+    widget.recent = [...numbers.map((number) => ({ number, at: Date.now() })), ...recent].slice(0, YAMATO_RECENT);
+    commit({ rerender: false });
+    renderRecent();
+  };
+
+  const form = h("form", { class: "yamato__form" },
+    input,
+    h("button", { class: "button button--primary", type: "submit" }, t("yamato.track")));
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const numbers = check();
+    if (!numbers.length) return;
+    // 1 回のクリックで開けるのは 1 件だけ（ブラウザがポップアップとして止めるため）。2 件目からは下の URL から開く
+    openYamato(numbers[0]);
+    remember(numbers);
+    if (numbers.length === 1) { input.value = ""; check(); }
+  });
+
+  const recentList = h("ul", { class: "yamato__recent", "aria-label": t("yamato.recent") });
+  const renderRecent = () => {
+    recentList.replaceChildren(...(widget.recent || []).map((r) => h("li", { class: "yamato__recent-item" },
+      h("a", {
+        class: "yamato__recent-open", href: yamatoUrl(r.number), target: newTab ? "_blank" : null,
+        rel: "noopener noreferrer", title: t("yamato.track"),
+      }, formatTrackingNumber(r.number)),
+      h("span", { class: "yamato__recent-tools" },
+        h("button", {
+          type: "button", class: "button button--small button--ghost", title: t("yamato.copy"), "aria-label": t("yamato.copy"),
+          onclick: () => copyText(yamatoUrl(r.number)),
+        }, "⧉"),
+        h("button", {
+          type: "button", class: "button button--small button--ghost", title: t("yamato.remove"), "aria-label": t("yamato.remove"),
+          onclick: () => {
+            widget.recent = widget.recent.filter((x) => x.number !== r.number);
+            commit({ rerender: false });
+            renderRecent();
+          },
+        }, "×")),
+    )));
+    recentList.hidden = !recentList.children.length;
+  };
+  renderRecent();
+
+  return h("div", { class: "yamato" }, form, note, urls, recentList);
 }
 
 function renderEmbed(widget) {
@@ -2365,6 +2497,17 @@ function renderGitHubLists({ lists }) {
  * fill：編集ダイアログに今の値を入れる（widget が null なら初期値）/ save：ダイアログの値を保存
  */
 const WIDGET_FORMS = {
+  yamato: {
+    init: (w) => { w.recent = []; },
+    normalize: (w) => {
+      w.recent = (Array.isArray(w.recent) ? w.recent : [])
+        .filter((r) => r && /^\d{10,12}$/.test(String(r.number)))
+        .map((r) => ({ number: String(r.number), at: Number(r.at) || 0 }))
+        .slice(0, YAMATO_RECENT);
+    },
+    fill: () => {},
+    save: () => {},
+  },
   weather: {
     normalize: (w) => {
       w.place = typeof w.place === "string" ? w.place : "";
