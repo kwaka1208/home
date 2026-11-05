@@ -119,7 +119,7 @@ const DEFAULT_SETTINGS = {
   layout: "tile", // "tile"：段で高さを指定してタイル状に並べる / "flow"：中身の高さに合わせる
   openInNewTab: true,
   useFavicons: true,
-  autoRenewGoogle: true, // カレンダー・Gmail の連携を、画面を操作したときに自動で延長する
+  autoRenewGoogle: false, // カレンダー・Gmail の連携を、画面を操作したときに自動で延長する（ポップアップが一瞬開くので初期値はオフ）
 };
 const DEFAULT_SEARCH_URL = "https://www.google.com/search?q=%s";
 
@@ -674,6 +674,8 @@ function withPersonal(data) {
   sharedPersonal = Object.fromEntries(storage.PERSONAL_KEYS.map((k) => [k, data.settings[k]]));
   const mine = storage.readPersonal();
   for (const k of storage.PERSONAL_KEYS) if (mine[k] != null) data.settings[k] = mine[k];
+  // 自動延長は、本人がまだ選んでいなければオフ（共有のデータの値は使わない）
+  if (mine.autoRenewGoogle == null) data.settings.autoRenewGoogle = false;
   return data;
 }
 
