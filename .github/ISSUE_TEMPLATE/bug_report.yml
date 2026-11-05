@@ -1,0 +1,105 @@
+name: バグ報告 / Bug report
+description: うまく動かない・表示がおかしいときはこちら / Something isn't working as expected
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        不具合の報告ありがとうございます。わかる範囲で書いてください。
+        Thanks for the report! Please fill in what you can.
+
+        > ⚠️ **Issue は誰でも見られます。** Firebase の設定値、アクセストークン、メールアドレス、ダッシュボードの中身（リンクやメモ）など、人に見せたくない情報は書かないでください。
+        > Issues are public. Do not include Firebase config values, access tokens, email addresses, or your dashboard's contents.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 何が起きましたか / What happened?
+      description: どの画面で何をしたら、どうなったか / What did you do, and what went wrong?
+      placeholder: |
+        例：天気のウィジェットに「札幌」と入れて保存したら、「地域が見つかりませんでした」と出た
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現する手順 / Steps to reproduce
+      description: 同じことを起こすための手順（わかれば）/ How can we make it happen again? (if known)
+      placeholder: |
+        1. 編集 → ＋ ウィジェットを追加
+        2. 種類で「天気」を選ぶ
+        3. ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 本来どうなってほしかったか / Expected behavior
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 関係する場所 / Area
+      multiple: true
+      options:
+        - セットアップ（Firebase・GitHub Pages）/ Setup
+        - ログイン・保存 / Sign-in & saving
+        - レイアウト・ドラッグ＆ドロップ / Layout & drag and drop
+        - リンク集 / Links
+        - ToDo
+        - メモ / Note
+        - 写真 / Photos
+        - Google カレンダー・Gmail / Google Calendar & Gmail
+        - 天気 / Weather
+        - タイマー・ポモドーロ / Timer
+        - 世界時計・時計 / Clocks
+        - 習慣トラッカー / Habit tracker
+        - GitHub
+        - 埋め込み・YouTube / Embed
+        - テーマ・見た目 / Themes & appearance
+        - 言語 / Language
+        - アドオン / Add-ons
+        - その他 / Other
+    validations:
+      required: false
+
+  - type: input
+    id: browser
+    attributes:
+      label: ブラウザと OS / Browser and OS
+      placeholder: 例：Chrome 130 / macOS 15、Safari / iPhone (iOS 18)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: バージョン / Version
+      description: 画面の左下に出ている番号 / The number at the bottom left of the screen
+      placeholder: v1.0 beta
+    validations:
+      required: false
+
+  - type: textarea
+    id: console
+    attributes:
+      label: エラーメッセージ / Error messages
+      description: |
+        画面に出たメッセージや、ブラウザの開発者ツール（Mac は ⌥⌘I、Windows は F12）の Console に出た赤いエラーがあれば貼ってください。
+        Paste any message on the screen or red errors from the browser's developer console.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: スクリーンショット / Screenshots
+      description: あれば貼り付けてください（個人的な内容が写っていないか確認してください）/ Optional. Make sure nothing private is visible.
+    validations:
+      required: false

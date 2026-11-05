@@ -74,6 +74,7 @@
       </a>
       <span class="app-footer__version" data-i18n-title="footer.beta">v1.0 beta</span>
       <span class="app-footer__spacer"></span>
+      <span class="app-footer__shared" id="shared-badge" data-i18n="footer.shared" data-i18n-title="footer.sharedTitle" hidden></span>
       <span id="user-email"></span>
       <button type="button" class="button button--small button--ghost" id="signout-button" data-i18n="footer.signout" hidden></button>
     </div>
@@ -371,6 +372,7 @@
         <select class="input" name="language">
           <option value="auto" data-i18n="settings.languageAuto"></option>
         </select>
+        <span class="field__hint" data-personal-hint data-i18n="settings.personalHint" hidden></span>
       </label>
       <label class="field">
         <span class="field__label" data-i18n="settings.mode"></span>
@@ -379,6 +381,7 @@
           <option value="light" data-i18n="settings.modeLight"></option>
           <option value="dark" data-i18n="settings.modeDark"></option>
         </select>
+        <span class="field__hint" data-personal-hint data-i18n="settings.personalHint" hidden></span>
       </label>
       <fieldset class="fieldset fieldset--plain">
         <legend class="field__label" data-i18n="settings.theme"></legend>

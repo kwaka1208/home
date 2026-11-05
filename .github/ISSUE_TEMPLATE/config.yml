@@ -1,0 +1,10 @@
+# Issue を作るときの選択画面の設定
+# 感想・質問などは、テンプレートを使わない「空の Issue」でも書けるようにしておく
+blank_issues_enabled: true
+contact_links:
+  - name: 使い方 / How to use (USAGE.md)
+    url: https://github.com/kwaka1208/personal-dashboard/blob/main/USAGE.md
+    about: 操作方法とウィジェットごとの使い方 / How to use the dashboard and each widget
+  - name: セットアップと困ったとき / Setup & troubleshooting (README.md)
+    url: https://github.com/kwaka1208/personal-dashboard/blob/main/README.md#困ったとき
+    about: 設定の手順と、よくあるエラーの直し方 / Setup steps and fixes for common errors
