@@ -150,6 +150,14 @@
   }
   .app-footer__link:hover { color: var(--color-text); }
   .app-footer__version { font-variant-numeric: tabular-nums; }
+  /* 共有中の印（firebase-config.js の SHARED_DASHBOARD） */
+  .app-footer__shared {
+    padding: 0 var(--space-2);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: 999px;
+    font-size: var(--font-size-xs);
+    line-height: 1.6;
+  }
   #user-email {
     min-width: 0;
     overflow: hidden;

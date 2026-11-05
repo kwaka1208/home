@@ -8,7 +8,9 @@ rules_version = '2';
 //
 // - メールアドレスは小文字で書いてください
 // - 複数の人に使わせる場合は ['a@gmail.com', 'b@gmail.com'] のようにカンマで区切ります
-//   （データは人ごとに別々に保存され、他の人のデータは読めません）
+//   ・ふだんは、データは人ごとに別々に保存され、他の人のデータは読めません
+//   ・firebase-config.js で SHARED_DASHBOARD = true にすると、ここに書いた全員で
+//     dashboards/shared の 1 つのダッシュボードを共有します
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -16,12 +18,16 @@ service cloud.firestore {
       return ['you@example.com'];
     }
 
-    // ログインしていて、本人のドキュメントで、許可したメールアドレスであること
-    function isOwner(uid) {
+    // ログインしていて、許可したメールアドレスであること
+    function isAllowed() {
       return request.auth != null
-        && request.auth.uid == uid
         && request.auth.token.email_verified == true
         && request.auth.token.email.lower() in allowedEmails();
+    }
+
+    // 読み書きしてよいドキュメントか：本人のもの（dashboards/{uid}）か、共有のもの（dashboards/shared）
+    function canUse(docId) {
+      return isAllowed() && (request.auth.uid == docId || docId == 'shared');
     }
 
     // 保存する内容の形と大きさを確認する
@@ -32,9 +38,9 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
     }
 
-    match /dashboards/{uid} {
-      allow read, delete: if isOwner(uid);
-      allow create, update: if isOwner(uid) && isValidDashboard();
+    match /dashboards/{docId} {
+      allow read, delete: if canUse(docId);
+      allow create, update: if canUse(docId) && isValidDashboard();
     }
 
     // これ以外の場所は、すべて読み書き禁止

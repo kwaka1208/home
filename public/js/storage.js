@@ -5,19 +5,26 @@
  * - 保存先：Cloud Firestore の dashboards/{ユーザーID} ドキュメント
  *   （中身はダッシュボード全体を JSON 文字列にしたもの）
  * - 読み書きできるのは、firestore.rules に書いたメールアドレスの本人だけ
+ * - firebase-config.js で SHARED_DASHBOARD = true にすると、dashboards/shared の 1 つを
+ *   firestore.rules に書いた全員で共有する（誰かが変えると、開いている全員の画面に反映される）
  *
  * firebase-config.js が未設定のときは「ローカルモード」になり、
  * ブラウザの localStorage にだけ保存します。
  */
 import { t } from "./i18n.js";
-import {
-  firebaseConfig,
-  FIREBASE_SDK_VERSION,
-  USE_EMULATORS_ON_LOCALHOST,
-} from "./firebase-config.js";
+// firebase-config.js は利用者ごとのファイルなので、新しい設定（SHARED_DASHBOARD）が
+// 書かれていない古いファイルでも動くよう、まとめて読み込んで無ければ初期値を使う
+import * as userConfig from "./firebase-config.js";
 import { DEFAULT_DASHBOARD_URL } from "./config.js";
 
+const { firebaseConfig, FIREBASE_SDK_VERSION, USE_EMULATORS_ON_LOCALHOST } = userConfig;
+
 const COLLECTION = "dashboards";
+/** 共有するときのドキュメントの名前（firestore.rules と合わせる） */
+const SHARED_DOC_ID = "shared";
+
+/** 許可した全員で 1 つのダッシュボードを共有するか（firebase-config.js の SHARED_DASHBOARD） */
+export const isShared = userConfig.SHARED_DASHBOARD === true;
 const LOCAL_PREFIX = "personal-dashboard:";
 
 export class StorageError extends Error {}
@@ -62,7 +69,26 @@ export function readAppearance() {
 }
 
 function rememberAppearance(data) {
-  writeAppearance(data?.settings);
+  // 共有中は、ライト / ダークと言語は共有のものではなく、この人の設定を覚えておく
+  writeAppearance({ ...data?.settings, ...(isShared ? readPersonal() : {}) });
+}
+
+/*
+ * 人ごとの設定（共有中だけ使う）：ライト / ダークと言語は、共有のダッシュボードに入れず、
+ * この端末にアカウントごとに覚えておく（同じ端末を家族で使っても、人ごとに分かれる）。
+ */
+export const PERSONAL_KEYS = ["mode", "language"];
+
+export function readPersonal() {
+  if (!currentUser) return {};
+  return readLocal(`personal:${currentUser.uid}`) || {};
+}
+
+export function writePersonal(settings) {
+  if (!currentUser) return;
+  const values = Object.fromEntries(PERSONAL_KEYS.map((k) => [k, settings?.[k]]).filter(([, v]) => v != null));
+  writeLocal(`personal:${currentUser.uid}`, values);
+  writeAppearance({ ...(readAppearance() || {}), ...values });
 }
 
 /** 見た目と言語の設定だけを、この端末に覚えておく（ログイン前の画面や、ライト / ダークの切り替えで使う） */
@@ -125,6 +151,7 @@ export async function signIn() {
 }
 
 export async function signOut() {
+  stopWatching();
   if (currentUser) writeLocal(`data:${currentUser.uid}`, null); // この端末に残した控えも消す
   writeLocal("google-token", null);
   writeLocal("github-token", null);
@@ -228,6 +255,32 @@ export async function loadDefault() {
   return res.json();
 }
 
+/** 読み書きするドキュメント（共有なら dashboards/shared、そうでなければ本人の dashboards/{uid}） */
+function dashboardRef() {
+  return fb.storeMod.doc(fb.db, COLLECTION, isShared ? SHARED_DOC_ID : currentUser.uid);
+}
+
+/** 最後に読み込んだ・保存した内容（自分の保存が通知で戻ってきたときに、描き直さないため） */
+let lastJson = null;
+/**
+ * 今の画面のもとになっている内容。保存するときに、これと Firestore の今の内容が違えば
+ * 「ほかの人（端末）が先に保存した」とわかるので、両方の変更をまとめてから保存する。
+ */
+let baseJson = null;
+
+/** 画面をこの内容（JSON 文字列）にそろえた、と知らせる（ほかの人の変更を反映したとき） */
+export function setBase(json) {
+  baseJson = json;
+}
+
+function parseDashboard(snap) {
+  try {
+    return JSON.parse(snap.data().json);
+  } catch {
+    throw new StorageError(t("error.unreadableData"));
+  }
+}
+
 /**
  * @returns {Promise<{ data: object, mode: "remote" | "local" }>}
  */
@@ -240,43 +293,108 @@ export async function load() {
   const { doc, getDoc } = fb.storeMod;
   let snap;
   try {
-    snap = await getDoc(doc(fb.db, COLLECTION, currentUser.uid));
+    snap = await getDoc(dashboardRef());
+    // 共有を始めたばかりで共有のデータがまだないときは、今までの自分のダッシュボードを引き継ぐ
+    if (!snap.exists() && isShared) {
+      const own = await getDoc(doc(fb.db, COLLECTION, currentUser.uid)).catch(() => null);
+      if (own?.exists()) snap = own;
+    }
   } catch (err) {
     throw new StorageError(describeError(err));
   }
   if (!snap.exists()) {
     // まだ一度も保存していない：初期レイアウトから始める
+    lastJson = baseJson = null;
     return { data: await loadDefault(), mode: "remote" };
   }
-  let data;
-  try {
-    data = JSON.parse(snap.data().json);
-  } catch {
-    throw new StorageError(t("error.unreadableData"));
-  }
+  const data = parseDashboard(snap);
+  lastJson = baseJson = snap.ref.id === dashboardRef().id ? snap.data().json : null;
   writeLocal(`data:${currentUser.uid}`, data);
   rememberAppearance(data);
   return { data, mode: "remote" };
 }
 
-export async function save(data, mode) {
+/**
+ * 保存する。ほかの人（端末）が先に保存していたら、merge(もと, 自分, ほかの人) でまとめた内容を保存する。
+ * @returns {Promise<{ merged: object, json: string } | null>} まとめた内容（まとめなかったときは null）。
+ *   まとめた内容を画面に反映したら setBase(json) を呼ぶこと
+ */
+export async function save(data, mode, merge) {
   rememberAppearance(data);
   if (mode !== "remote") {
     writeLocal("data:local", data);
-    return;
+    return null;
   }
   if (!currentUser) throw new StorageError(t("error.sessionExpired"));
-  writeLocal(`data:${currentUser.uid}`, data);
 
-  const { doc, setDoc, serverTimestamp } = fb.storeMod;
+  const { runTransaction, serverTimestamp } = fb.storeMod;
+  const ref = dashboardRef();
+  const base = baseJson; // 保存を始めた時点の「もと」（保存中に変わっても、これでまとめる）
+  let result = null;
   try {
-    await setDoc(doc(fb.db, COLLECTION, currentUser.uid), {
-      json: JSON.stringify(data),
-      updatedAt: serverTimestamp(),
+    await runTransaction(fb.db, async (tx) => {
+      const snap = await tx.get(ref);
+      const remoteJson = snap.exists() ? snap.data().json : null;
+      let toWrite = data;
+      result = null;
+      if (merge && remoteJson && base && remoteJson !== base) {
+        try {
+          toWrite = merge(JSON.parse(base), data, JSON.parse(remoteJson));
+          result = { merged: toWrite };
+        } catch { /* まとめられないときは、自分の内容で保存する */ }
+      }
+      const json = JSON.stringify(toWrite);
+      if (result) result.json = json;
+      lastJson = json;
+      tx.set(ref, { json, updatedAt: serverTimestamp() });
     });
   } catch (err) {
     throw new StorageError(describeError(err));
   }
+  if (!result) baseJson = lastJson;
+  writeLocal(`data:${currentUser.uid}`, result ? result.merged : data);
+  return result;
+}
+
+/* ------------------------------------------------------------------ */
+/* ほかの人（ほかの端末）の変更を受け取る                                   */
+/* ------------------------------------------------------------------ */
+
+let unsubscribe = null;
+
+/**
+ * ダッシュボードが Firestore で変わったら callback(data, json) を呼ぶ。
+ * 自分の保存が戻ってきたもの・今の内容と同じものは呼ばない。
+ * 画面に反映したら setBase(json) を呼ぶこと。
+ */
+export function watch(callback) {
+  stopWatching();
+  if (!isConfigured || !currentUser) return;
+  unsubscribe = fb.storeMod.onSnapshot(dashboardRef(), (snap) => {
+    if (snap.metadata.hasPendingWrites || !snap.exists()) return;
+    const json = snap.data().json;
+    if (json === lastJson) return;
+    let data;
+    try { data = parseDashboard(snap); } catch { return; }
+    lastJson = json;
+    writeLocal(`data:${currentUser.uid}`, data);
+    callback(data, json);
+  }, () => { /* 通信が切れたなど。つながり直すと自動で再開する */ });
+}
+
+/** Firestore の今の内容を読み直す。画面の内容と同じなら null */
+export async function fetchLatest() {
+  if (!isConfigured || !currentUser) return null;
+  const snap = await fb.storeMod.getDoc(dashboardRef());
+  if (!snap.exists() || snap.data().json === lastJson) return null;
+  const json = snap.data().json;
+  lastJson = json;
+  return { data: parseDashboard(snap), json };
+}
+
+export function stopWatching() {
+  unsubscribe?.();
+  unsubscribe = null;
 }
 
 /* ------------------------------------------------------------------ */

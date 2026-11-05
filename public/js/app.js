@@ -135,6 +135,7 @@ const el = {
   editToggle: $("#edit-toggle"),
   settingsOpen: $("#settings-open"),
   modeToggle: $("#mode-toggle"),
+  sharedBadge: $("#shared-badge"),
   saveStatus: $("#save-status"),
   banner: $("#banner"),
   userEmail: $("#user-email"),
@@ -507,13 +508,140 @@ async function saveNow() {
   saveTimer = null;
   if (!state) return;
   setStatus(t("status.saving"));
+  saving = true;
   try {
-    await storage.save(state, storageMode);
+    const result = await storage.save(forSaving(state), storageMode, mergeDashboards);
+    saving = false;
     setStatus(storageMode === "remote" ? t("status.saved") : t("status.savedLocal"));
+    // ほかの人（端末）の変更とまとめて保存したときは、まとめた内容を画面にも反映する
+    if (result) applyRemote(result.merged, result.json, { merged: true });
+    // 保存中に届いた変更は、保存のあとで読み直して反映する（保存の途中で画面を入れ替えると、まとめ方が狂うため）
+    if (remoteDuringSave) {
+      remoteDuringSave = false;
+      const latest = await storage.fetchLatest().catch(() => null);
+      if (latest) applyRemote(latest.data, latest.json);
+    }
   } catch (err) {
     setStatus(t("status.failed"), "error");
     showBanner(err.message);
+  } finally {
+    saving = false;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* ほかの人（ほかの端末）の変更を反映する                                   */
+/* ------------------------------------------------------------------ */
+/*
+ * Firestore のダッシュボードが変わると storage.watch() から届く。
+ * 共有（SHARED_DASHBOARD）のときはほかの人の編集、そうでなくても別の端末での編集が、そのまま画面に反映される。
+ * 同じときに 2 人が編集した場合は、後から保存したほうの内容になる。
+ */
+let pendingRemote = null; // { data, json, merged }
+let saving = false; // 保存の途中か
+let remoteDuringSave = false; // 保存の途中に、ほかの人の変更が届いたか
+let remoteRetry = null;
+
+/**
+ * 3 方向のまとめ：もと（base）から自分（local）とほかの人（remote）がそれぞれ変えた内容を 1 つにする。
+ * ウィジェット・タブ・設定の項目ごとに、自分が変えたものは自分の内容、変えていないものはほかの人の内容を使う。
+ * 追加はどちらのものも残し、削除は相手がその間に変えていなければ消す。
+ */
+function mergeDashboards(base, local, remote) {
+  const key = (v) => JSON.stringify(v ?? null);
+  const pick = (b, l, r) => (key(l) === key(b) ? r : l);
+  const byId = (list) => new Map((Array.isArray(list) ? list : []).map((x) => [x.id, x]));
+
+  /** id を持つものの一覧をまとめる（並び順は、自分が並べ替えていれば自分、そうでなければほかの人） */
+  function mergeList(bList, lList, rList, mergeItem) {
+    const b = byId(bList), l = byId(lList), r = byId(rList);
+    const ids = (a) => (Array.isArray(a) ? a.map((x) => x.id) : []);
+    const order = key(ids(lList)) !== key(ids(bList)) ? ids(lList) : ids(rList);
+    for (const id of [...ids(lList), ...ids(rList)]) if (!order.includes(id)) order.push(id);
+    const out = [];
+    for (const id of order) {
+      const bi = b.get(id), li = l.get(id), ri = r.get(id);
+      if (li && ri) out.push(mergeItem ? mergeItem(bi, li, ri) : pick(bi, li, ri));
+      else if (li) { if (!bi || key(li) !== key(bi)) out.push(li); } // ほかの人が消した：自分が変えていなければ消す
+      else if (ri) { if (!bi || key(ri) !== key(bi)) out.push(ri); } // 自分が消した：ほかの人が変えていなければ消す
+    }
+    return out;
+  }
+
+  const settings = { ...remote.settings };
+  for (const k of new Set([...Object.keys(local.settings || {}), ...Object.keys(remote.settings || {})])) {
+    settings[k] = pick(base.settings?.[k], local.settings?.[k], remote.settings?.[k]);
+  }
+  return {
+    ...remote,
+    title: pick(base.title, local.title, remote.title),
+    settings,
+    pages: mergeList(base.pages, local.pages, remote.pages, (b, l, r) => ({
+      ...r,
+      name: pick(b?.name, l.name, r.name),
+      widgets: mergeList(b?.widgets, l.widgets, r.widgets),
+    })),
+  };
+}
+
+/** 入力中・ダイアログ・ドラッグ中など、描き直すと操作の邪魔になるとき */
+function isBusy() {
+  if (document.querySelector("dialog[open], .is-resizing, .is-dragging, .is-chosen")) return true;
+  const active = document.activeElement;
+  return Boolean(active && el.dashboard.contains(active) && active.matches("input, textarea, select, [contenteditable]"));
+}
+
+function applyRemote(data, json, { merged = false } = {}) {
+  pendingRemote = { data, json, merged };
+  clearTimeout(remoteRetry);
+  if (!state) return;
+  if (saving && !merged) { pendingRemote = null; remoteDuringSave = true; return; }
+  // 自分の変更がまだ保存されていないときは、保存するときにまとめるので、ここでは何もしない
+  if (saveTimer) { pendingRemote = null; return; }
+  if (isBusy()) {
+    remoteRetry = setTimeout(() => applyRemote(pendingRemote.data, pendingRemote.json, pendingRemote), 1000);
+    return;
+  }
+  pendingRemote = null;
+  const next = withPersonal(normalize(data));
+  if (key(next) !== key(state)) {
+    const current = activePageId;
+    state = next;
+    if (state.pages.some((p) => p.id === current)) activePageId = current;
+    else pickInitialPage();
+    render();
+    setStatus(t("status.synced"));
+  }
+  storage.setBase(json);
+
+  function key(v) { return JSON.stringify(v); }
+}
+
+/* ------------------------------------------------------------------ */
+/* 人ごとの設定（共有中）：ライト / ダークと言語                             */
+/* ------------------------------------------------------------------ */
+
+/** 共有のダッシュボードを使っているか（このときライト / ダークと言語は人ごと） */
+function isPersonalMode() {
+  return storage.isShared && storageMode === "remote";
+}
+
+/** 共有のデータに入っている、ライト / ダークと言語の値（保存するときは、これを書き戻す） */
+let sharedPersonal = {};
+
+/** 読み込んだ（共有の）データに、この人のライト / ダークと言語を当てはめる */
+function withPersonal(data) {
+  if (!isPersonalMode()) return data;
+  sharedPersonal = Object.fromEntries(storage.PERSONAL_KEYS.map((k) => [k, data.settings[k]]));
+  const mine = storage.readPersonal();
+  for (const k of storage.PERSONAL_KEYS) if (mine[k] != null) data.settings[k] = mine[k];
+  return data;
+}
+
+/** 保存する内容：共有中は、ライト / ダークと言語を共有の値に戻す（この人の設定は共有しない） */
+function forSaving(data) {
+  if (!isPersonalMode()) return data;
+  return { ...data, settings: { ...data.settings, ...sharedPersonal } };
 }
 
 /** 変更を反映：描き直して保存 */
@@ -591,7 +719,8 @@ function toggleMode() {
   if (state) {
     state.settings.mode = mode;
     applySettings();
-    commit({ rerender: false });
+    if (isPersonalMode()) storage.writePersonal(state.settings);
+    else commit({ rerender: false });
   } else {
     const next = { ...settings, mode };
     storage.writeAppearance(next);
@@ -3100,6 +3229,7 @@ el.settingsOpen.addEventListener("click", () => {
   const f = el.settingsForm.elements;
   f.title.value = state.title;
   f.language.value = state.settings.language;
+  for (const hint of $$("[data-personal-hint]", el.settingsForm)) hint.hidden = !isPersonalMode();
   f.mode.value = state.settings.mode;
   f.preset.value = state.settings.preset;
   f.density.value = state.settings.density;
@@ -3139,6 +3269,7 @@ el.settingsDialog.addEventListener("close", () => {
       useFavicons: f.useFavicons.checked,
       autoRenewGoogle: f.autoRenewGoogle.checked,
     };
+    if (isPersonalMode()) storage.writePersonal(state.settings);
     commit();
   } else {
     applySettings(); // プレビューを元に戻す
@@ -3163,7 +3294,7 @@ el.importInput.addEventListener("change", async () => {
     const data = JSON.parse(await file.text());
     if (!Array.isArray(data.pages) && !Array.isArray(data.widgets)) throw new Error(t("settings.importNoWidgets"));
     if (!confirm(t("settings.importConfirm"))) return;
-    state = normalize(data);
+    state = withPersonal(normalize(data));
     pickInitialPage();
     el.settingsDialog.close("imported");
     commit();
@@ -3175,7 +3306,7 @@ el.importInput.addEventListener("change", async () => {
 el.resetButton.addEventListener("click", async () => {
   if (!confirm(t("settings.resetConfirm"))) return;
   try {
-    state = normalize(await storage.loadDefault());
+    state = withPersonal(normalize(await storage.loadDefault()));
     pickInitialPage();
     el.settingsDialog.close("reset");
     commit();
@@ -3210,6 +3341,9 @@ for (const form of [el.widgetForm, el.linkForm, el.textForm, el.settingsForm]) {
 
 /** ログイン前・読み込み失敗時：ダッシュボードを隠して、編集できないようにする */
 function showSignedOut() {
+  storage.stopWatching();
+  clearTimeout(remoteRetry);
+  el.sharedBadge.hidden = true;
   clearInterval(clockTimer);
   if (editing) setEditing(false);
   state = null;
@@ -3231,9 +3365,9 @@ async function openDashboard(user) {
   setStatus(t("common.loading"));
   try {
     const result = await storage.load();
-    state = normalize(result.data);
-    pickInitialPage();
     storageMode = result.mode;
+    state = withPersonal(normalize(result.data));
+    pickInitialPage();
   } catch (err) {
     // 許可がない・設定漏れなど。データを上書きしないよう、画面は出さない
     showSignedOut();
@@ -3267,6 +3401,9 @@ async function openDashboard(user) {
   render();
   clearInterval(clockTimer);
   clockTimer = setInterval(updateClocks, 1000);
+  // ほかの人・ほかの端末の変更を受け取る
+  el.sharedBadge.hidden = !(storageMode === "remote" && storage.isShared);
+  if (storageMode === "remote") storage.watch(applyRemote);
 }
 
 el.signinButton.addEventListener("click", async () => {
