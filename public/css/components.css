@@ -319,6 +319,7 @@
   }
 
   .widget__tools { display: none; gap: var(--space-1); }
+  .widget__tools--always { display: inline-flex; } /* 編集モードでなくても出すボタン（リンク集の「＋」） */
 
   .widget__body {
     flex: 1 1 auto; /* 見出しを除いた残りの高さは本文が受け持つ */
@@ -506,12 +507,19 @@
     flex: none;
   }
   [data-editing] .link-item__edit { display: inline-flex; }
+  /* 編集モードでなくても、マウスを乗せた（キーボードで選んだ）リンクには ✎ を出す。押すと編集・削除できる */
+  @media (hover: hover) {
+    .link-item:hover .link-item__edit { display: inline-flex; }
+  }
+  .link-item:focus-within .link-item__edit { display: inline-flex; }
   [data-editing] .link { cursor: grab; }
-  [data-editing] .link-list--grid .link-item__edit {
+  .link-list--grid .link-item__edit {
     position: absolute;
     top: 2px;
     right: 2px;
   }
+  /* スマホで長押ししたとき、ブラウザのリンクのメニューを出さない（長押しで編集画面を開くため） */
+  .link { -webkit-touch-callout: none; }
 
   /* 絞り込みで一致しなかったもの */
   .is-filtered-out { display: none !important; }

@@ -775,17 +775,17 @@ function renderWidget(widget) {
   for (const [k, v] of Object.entries(style)) section.style.setProperty(k, v);
 
   const tools = h("div", { class: "widget__tools" });
-  if (widget.type === "links") {
-    tools.append(
+  // 編集モードでなくても出しておくボタン（リンク集の「＋」）
+  const quickTools = widget.type === "links"
+    ? h("div", { class: "widget__tools widget__tools--always" },
       h("button", {
         type: "button",
         class: "button button--small button--ghost",
         title: t("link.add"),
         "aria-label": t("link.add"),
         onclick: () => openLinkDialog(widget.id, null),
-      }, "＋"),
-    );
-  }
+      }, "＋"))
+    : null;
   if (widget.type === "todo") {
     tools.append(
       h("button", {
@@ -834,6 +834,7 @@ function renderWidget(widget) {
       h("span", { class: "widget__handle", title: t("widget.dragHandle"), "aria-hidden": "true" }, "⠿"),
       h("h2", { class: "widget__title" }, h("span", { class: "widget__title-text" }, widget.title || "")),
       HEADER_REFRESH_WIDGETS.includes(widget.type) ? renderHeaderRefresh(widget) : null,
+      quickTools,
       tools,
     ),
     h("div", { class: "widget__body" }, renderWidgetBody(widget)),
@@ -983,11 +984,13 @@ function renderLinkItem(widget, item) {
   );
   // 編集モード中はリンクを開かずに編集する
   link.addEventListener("click", (event) => {
-    if (editing) {
+    if (editing || link.dataset.longPressed) {
       event.preventDefault();
-      openLinkDialog(widget.id, item.id);
+      delete link.dataset.longPressed;
+      if (editing) openLinkDialog(widget.id, item.id);
     }
   });
+  addLongPress(link, () => openLinkDialog(widget.id, item.id));
 
   return h("li", {
     class: "link-item",
@@ -1001,6 +1004,37 @@ function renderLinkItem(widget, item) {
       onclick: () => openLinkDialog(widget.id, item.id),
     }, "✎"),
   );
+}
+
+/*
+ * スマホ・タブレット：リンクを長押しすると編集画面を開く（編集モードでなくても）。
+ * 指を動かしたら（スクロール・ドラッグ）取りやめる。マウスの右クリックは、ブラウザのいつものメニューのまま。
+ */
+const LONG_PRESS_MS = 550;
+
+function addLongPress(target, onLongPress) {
+  let timer = null;
+  let start = null;
+  const cancel = () => { clearTimeout(timer); timer = null; };
+  target.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" || editing) return;
+    start = { x: event.clientX, y: event.clientY };
+    cancel();
+    timer = setTimeout(() => {
+      timer = null;
+      target.dataset.longPressed = "1"; // 指を離したときのクリック（リンクを開く）を止める
+      navigator.vibrate?.(10);
+      onLongPress();
+    }, LONG_PRESS_MS);
+  });
+  target.addEventListener("pointermove", (event) => {
+    if (timer && start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) cancel();
+  });
+  for (const type of ["pointerup", "pointercancel", "pointerleave"]) target.addEventListener(type, cancel);
+  // 長押しで出るブラウザのメニュー（リンクを開く・共有など）は出さない
+  target.addEventListener("contextmenu", (event) => {
+    if (target.dataset.longPressed || timer) event.preventDefault();
+  });
 }
 
 function renderIcon(item, url, title) {
@@ -2735,6 +2769,12 @@ document.addEventListener("drop", (event) => {
     showToast(t("link.duplicate", { name }));
     return;
   }
+  // ページ名がわからない（Chrome・Safari のアドレスバーから）ときは、名前を入力できるよう追加画面を開く。
+  // URL は入力済み。空のまま保存すればドメイン名で、キャンセルなら追加しない
+  if (!link.title) {
+    openLinkDialog(widget.id, null, { url: link.url });
+    return;
+  }
   const item = { id: uid(), url: link.url, title: link.title, icon: "", description: "" };
   widget.items.push(item);
   commit();
@@ -3133,20 +3173,22 @@ el.widgetDelete.addEventListener("click", () => {
 
 let linkTarget = { widgetId: null, itemId: null };
 
-function openLinkDialog(widgetId, itemId) {
+function openLinkDialog(widgetId, itemId, { url = "" } = {}) {
   linkTarget = { widgetId, itemId };
   const widget = widgets().find((w) => w.id === widgetId);
   const item = widget?.items.find((i) => i.id === itemId);
   const f = el.linkForm.elements;
 
   $("#link-dialog-title").textContent = item ? t("link.editTitle") : t("link.add");
-  f.url.value = item?.url || "";
+  f.url.value = item?.url || url;
   f.title.value = item?.title || "";
   f.icon.value = item?.icon || "";
   f.description.value = item?.description || "";
   el.linkDelete.hidden = !item;
   el.linkDialog.returnValue = "";
   el.linkDialog.showModal();
+  // URL が入っているとき（ドロップで追加）は、表示名の欄から入力できるようにする
+  if (!item && url) f.title.focus();
 }
 
 el.linkForm.addEventListener("submit", (event) => {
