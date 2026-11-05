@@ -38,6 +38,8 @@ export default {
   "footer.repoLabel": "personal-dashboard repository (GitHub)",
   "footer.beta": "Beta: features and the data format may change",
   "footer.signout": "Sign out",
+  "footer.shared": "Shared",
+  "footer.sharedTitle": "This dashboard is shared with all allowed members",
 
   /* ---------- Sign in ---------- */
   "signin.title": "Sign in",
@@ -50,6 +52,7 @@ export default {
   "status.saved": "Saved",
   "status.savedLocal": "Saved in this browser",
   "status.failed": "Could not save",
+  "status.synced": "Updated with changes from others",
   "banner.localMode": "Running in \"local mode\" because Firebase is not configured. Data is saved only in this browser (README step 5).",
 
   /* ---------- Widget types ---------- */
@@ -379,6 +382,7 @@ export default {
   "settings.name": "Dashboard name",
   "settings.language": "Language / 言語",
   "settings.languageAuto": "Auto (browser setting) / ブラウザに合わせる",
+  "settings.personalHint": "This dashboard is shared, but this setting is yours only (it doesn't affect others)",
   "settings.mode": "Color scheme",
   "settings.modeAuto": "Match the OS",
   "settings.modeLight": "Light",

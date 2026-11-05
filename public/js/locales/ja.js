@@ -38,6 +38,8 @@ export default {
   "footer.repoLabel": "personal-dashboard のリポジトリ（GitHub）",
   "footer.beta": "ベータ版：機能やデータの形式が変わることがあります",
   "footer.signout": "ログアウト",
+  "footer.shared": "共有中",
+  "footer.sharedTitle": "このダッシュボードは、許可されたメンバー全員で共有しています",
 
   /* ---------- ログイン ---------- */
   "signin.title": "ログイン",
@@ -50,6 +52,7 @@ export default {
   "status.saved": "保存しました",
   "status.savedLocal": "このブラウザに保存しました",
   "status.failed": "保存できませんでした",
+  "status.synced": "ほかの人の変更を反映しました",
   "banner.localMode": "Firebase が未設定のため「ローカルモード」で動いています。データはこのブラウザにだけ保存されます（README の手順 5）。",
 
   /* ---------- ウィジェットの種類 ---------- */
@@ -379,6 +382,7 @@ export default {
   "settings.name": "ダッシュボードの名前",
   "settings.language": "言語 / Language",
   "settings.languageAuto": "ブラウザの設定に合わせる / Auto",
+  "settings.personalHint": "共有中ですが、この設定はあなただけのものです（ほかの人には影響しません）",
   "settings.mode": "配色",
   "settings.modeAuto": "OS の設定に合わせる",
   "settings.modeLight": "ライト",
