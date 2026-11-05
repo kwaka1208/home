@@ -454,6 +454,8 @@ WIDGET.md                    アドオン（自作ウィジェット）の作り
 firestore.rules              Firestore のセキュリティルール（コンソールに貼り付ける見本）
 firebase.json                エミュレーター用の設定
 .github/workflows/pages.yml  public/ を GitHub Pages に公開する設定
+.github/workflows/sync-template.yml  本家の更新を取り込む Pull Request を作る（「本家の更新を取り込む」の A）
+.github/ISSUE_TEMPLATE/      Issue のテンプレート（バグ報告・要望）
 ```
 
 ### データの保存形式
