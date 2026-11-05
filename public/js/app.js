@@ -2769,6 +2769,12 @@ document.addEventListener("drop", (event) => {
     showToast(t("link.duplicate", { name }));
     return;
   }
+  // ページ名がわからない（Chrome・Safari のアドレスバーから）ときは、名前を入力できるよう追加画面を開く。
+  // URL は入力済み。空のまま保存すればドメイン名で、キャンセルなら追加しない
+  if (!link.title) {
+    openLinkDialog(widget.id, null, { url: link.url });
+    return;
+  }
   const item = { id: uid(), url: link.url, title: link.title, icon: "", description: "" };
   widget.items.push(item);
   commit();
@@ -3167,20 +3173,22 @@ el.widgetDelete.addEventListener("click", () => {
 
 let linkTarget = { widgetId: null, itemId: null };
 
-function openLinkDialog(widgetId, itemId) {
+function openLinkDialog(widgetId, itemId, { url = "" } = {}) {
   linkTarget = { widgetId, itemId };
   const widget = widgets().find((w) => w.id === widgetId);
   const item = widget?.items.find((i) => i.id === itemId);
   const f = el.linkForm.elements;
 
   $("#link-dialog-title").textContent = item ? t("link.editTitle") : t("link.add");
-  f.url.value = item?.url || "";
+  f.url.value = item?.url || url;
   f.title.value = item?.title || "";
   f.icon.value = item?.icon || "";
   f.description.value = item?.description || "";
   el.linkDelete.hidden = !item;
   el.linkDialog.returnValue = "";
   el.linkDialog.showModal();
+  // URL が入っているとき（ドロップで追加）は、表示名の欄から入力できるようにする
+  if (!item && url) f.title.focus();
 }
 
 el.linkForm.addEventListener("submit", (event) => {
