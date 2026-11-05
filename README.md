@@ -218,13 +218,16 @@ Google Cloud で OAuth クライアントを作る必要はありません（Fir
 >   appId: "...",
 > };
 >
+> export const SHARED_DASHBOARD = false;
+>
 > export const FIREBASE_SDK_VERSION = "13.1.0";
 >
 > export const USE_EMULATORS_ON_LOCALHOST = false;
 > ```
 >
 > - 1 行目は `export const firebaseConfig = {` です（`export` が必要で、`const firebaseConfig` を二重にしない）
-> - 下の `FIREBASE_SDK_VERSION` と `USE_EMULATORS_ON_LOCALHOST` の 2 行も消さずに残します
+> - 下の `SHARED_DASHBOARD`・`FIREBASE_SDK_VERSION`・`USE_EMULATORS_ON_LOCALHOST` の行も消さずに残します
+>   （`SHARED_DASHBOARD` は、下の「複数のアカウントで共有する」で使います）
 
 コミットすると、手順 2 で設定した GitHub Actions が自動で動き、1〜2 分で公開されます
 （リポジトリの **Actions** タブで進み具合を確認できます）。
@@ -243,6 +246,30 @@ Google Cloud で OAuth クライアントを作る必要はありません（Fir
 右下に自分のメールアドレスが出ていれば完了です。
 
 ブラウザのホームページやブックマークに登録しておくと便利です。
+
+### 複数のアカウントで共有する（任意）
+
+家族やチームなど、**複数の Google アカウントで同じダッシュボードを見て編集したい**ときの設定です。
+同じ URL を開いた全員が、同じタブ・ウィジェット・リンク・メモ・ToDo を共有します。
+誰かが変更すると、開いている全員の画面に数秒で反映されます。
+
+1. 手順 4 のルールの `allowedEmails()` に、共有する全員のメールアドレスを書きます（例：`['a@gmail.com', 'b@gmail.com']`）。
+   **このリポジトリの最新の `firestore.rules` を貼り付けて「公開」してください。** 共有のデータ（`dashboards/shared`）を読み書きできるのは、このルールからです。
+   以前のルールのままだと「〇〇 ではこのダッシュボードを使えません」と出ます。
+2. `public/js/firebase-config.js` の `SHARED_DASHBOARD` を `true` にしてコミットします。
+   この行がない古いファイルの場合は、ファイルの最後に `export const SHARED_DASHBOARD = true;` を足します。
+
+```js
+export const SHARED_DASHBOARD = true;
+```
+
+- 共有を始めたとき、共有のデータがまだなければ、**最初に開いた人の今までのダッシュボード**を引き継ぎます。
+  それぞれの人の今までのデータ（`dashboards/{ユーザー ID}`）は消えずに残っていて、`false` に戻せば元のダッシュボードに戻ります。
+- 右下に **共有中** と表示されます。
+- 2 人が同じときに編集しても、ウィジェットやタブごとに両方の変更をまとめて保存します。
+  ただし **同じウィジェットを同じときに変えたとき** は、後から保存した人の内容になります。
+- 次のものは共有されず、人（端末）ごとです：Google カレンダー・Gmail（それぞれ自分のものが表示されます）、GitHub のトークン、動いているタイマー、最後に開いていたタブ。
+- テーマ・言語などの ⚙ の設定もダッシュボードの一部なので、全員で共通になります（ライト / ダークを D キーで切り替えると、全員の画面が切り替わります）。
 
 ### 8. API キーの使える場所を絞る（おすすめ）
 
@@ -391,7 +418,7 @@ firebase.json                エミュレーター用の設定
 
 ### データの保存形式
 
-Firestore の `dashboards/{ユーザー ID}` ドキュメントに、次の形で保存します。
+Firestore の `dashboards/{ユーザー ID}` ドキュメント（共有するときは `dashboards/shared`）に、次の形で保存します。
 
 | フィールド | 内容 |
 |---|---|
@@ -413,7 +440,7 @@ Firestore の `dashboards/{ユーザー ID}` ドキュメントに、次の形�
 | Console に `Unexpected identifier` などの `SyntaxError`（`firebase-config.js` で発生） | `const firebaseConfig = {` が二重になっている、カッコや `"` の閉じ忘れがないか |
 | 「apiKey が正しくありません」 | `firebase-config.js` の値に貼り間違いがないか |
 | 手順 8 の制限をかけたらログインや保存ができなくなった | 許可したサイトに `<ユーザー名>.github.io` と `<プロジェクト ID>.firebaseapp.com` の両方があるか、API の制限に 3 つの API が入っているか |
-| 「〇〇 ではこのダッシュボードを使えません」 | 手順 4 のルールの `allowedEmails()` にそのアドレスが**小文字で**入っているか、ルールを**公開**したか |
+| 「〇〇 ではこのダッシュボードを使えません」 | 手順 4 のルールの `allowedEmails()` にそのアドレスが**小文字で**入っているか、ルールを**公開**したか。共有（`SHARED_DASHBOARD = true`）にしたときは、最新の `firestore.rules` を貼り付けて公開し直したか |
 | 「Firestore のデータベースが見つかりません」 | 手順 4 で Firestore Database を作成したか |
 | カレンダー・Gmail のウィジェットに「Google Cloud で『Google Calendar API』（または『Gmail API』）が有効になっていません」 | 表示されたリンクを開き、Firebase と同じプロジェクトで **有効にする** を押す（手順 9）。反映に数分かかるので、待ってから ↻ |
 | カレンダー・Gmail のウィジェットに「必要な権限が許可されていません」 | 手順 9 の 3 で権限（スコープ）を追加したか。追加後は「連携し直す」で、確認画面のチェックをすべて入れて許可する |
