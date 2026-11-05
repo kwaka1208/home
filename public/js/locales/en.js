@@ -70,12 +70,14 @@ export default {
   "widget.worldclock": "World clock",
   "widget.habit": "Habit tracker",
   "widget.github": "GitHub",
+  "widget.yamato": "Package tracking (Yamato)",
   "typeOption.embed": "Embed (YouTube, calendars, etc.)",
   "typeOption.todo": "To-do (by category)",
   "typeOption.photo": "Photos (slideshow)",
   "typeOption.calendar": "Google Calendar (upcoming events)",
   "typeOption.mail": "Gmail (unread count)",
   "typeOption.github": "GitHub (pull requests / issues)",
+  "typeOption.yamato": "Package tracking (look up a Yamato Transport tracking number)",
 
   /* ---------- Dashboard / widget frame ---------- */
   "dashboard.addWidget": "+ Add widget",
@@ -461,4 +463,14 @@ export default {
   "addon.sameAsBuiltin": "Type \"{type}\" has the same name as a built-in widget",
   "addon.missing": "Add-on \"{type}\" not found. Check that public/addons/index.js imports it (the data is kept).",
   "addon.error": "Add-on \"{type}\" failed: {message}",
+
+  /* ---------- 荷物の追跡（ヤマト運輸） ---------- */
+  "yamato.placeholder": "Tracking number (e.g. 1234-5678-9012)",
+  "yamato.label": "Yamato Transport tracking number",
+  "yamato.track": "Track",
+  "yamato.invalid": "Enter a 10–12 digit tracking number (separate several with spaces or commas)",
+  "yamato.skipped": "{n} number(s) with the wrong length will be skipped",
+  "yamato.checkDigit": "{numbers} may be wrong (please check for typos)",
+  "yamato.recent": "Recently tracked",
+  "yamato.remove": "Remove from history",
 };

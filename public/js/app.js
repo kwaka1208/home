@@ -51,13 +51,14 @@ const WIDGET_TYPES = {
   worldclock: "widget.worldclock",
   habit: "widget.habit",
   github: "widget.github",
+  yamato: "widget.yamato",
 };
 const DEFAULT_TODO_CATEGORIES = ["todo.category.work", "todo.category.private"]; // 文言のキー
 /** ウィジェットの高さ（段数）の選択肢と、種類ごとの初期値 */
 const ROW_OPTIONS = [1, 2, 3, 4];
 const DEFAULT_ROWS = {
   links: 2, note: 2, clock: 1, search: 1, embed: 2, todo: 3, photo: 2, calendar: 3, mail: 1,
-  weather: 2, timer: 2, worldclock: 2, habit: 2, github: 3,
+  weather: 2, timer: 2, worldclock: 2, habit: 2, github: 3, yamato: 2,
 };
 /** Google の API を使うウィジェット */
 const GOOGLE_WIDGETS = ["calendar", "mail"];
@@ -988,6 +989,7 @@ function renderWidgetBody(widget) {
     case "worldclock": return renderWorldClock(widget);
     case "habit": return renderHabit(widget);
     case "github": return renderGitHub(widget);
+    case "yamato": return renderYamato(widget);
     default: return renderAddonWidget(widget);
   }
 }
@@ -1255,6 +1257,116 @@ function renderSearch(widget) {
     if (url) window.open(url, state.settings.openInNewTab ? "_blank" : "_self", "noopener");
   });
   return form;
+}
+
+/* ================================================================== */
+/* 荷物の追跡（ヤマト運輸）                                               */
+/* ================================================================== */
+/*
+ * 送り状（伝票）番号から、ヤマト運輸の荷物お問い合わせの結果ページを開く。
+ * ヤマト運輸のページは URL（GET）に番号を付けても検索せず、フォームの送信（POST）でだけ検索するので、
+ * 同じ内容のフォームをその場で作って送る。番号は 1 回に 10 件まで（空白・カンマ・改行で区切る）。
+ * 最近調べた番号は、ウィジェットに 10 件まで残す（保存データに入る）。
+ */
+const YAMATO_URL = "https://toi.kuronekoyamato.co.jp/cgi-bin/tneko";
+const YAMATO_MAX = 10;
+const YAMATO_RECENT = 10;
+
+/** 入力から送り状番号を取り出す（数字だけにする。10〜12 桁のもの） */
+function parseTrackingNumbers(text) {
+  const numbers = String(text).split(/[\s,、，]+/)
+    .map((part) => part.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[^0-9]/g, ""))
+    .filter(Boolean);
+  const valid = numbers.filter((n) => n.length >= 10 && n.length <= 12);
+  const invalid = numbers.filter((n) => n.length < 10 || n.length > 12);
+  return { valid: [...new Set(valid)].slice(0, YAMATO_MAX), invalid };
+}
+
+/** 12 桁の番号は、最後の 1 桁が「前の 11 桁を 7 で割った余り」になっている（打ち間違いの目安） */
+function trackingCheckDigitOk(n) {
+  if (n.length !== 12) return true;
+  return Number(BigInt(n.slice(0, 11)) % 7n) === Number(n[11]);
+}
+
+/** 1234-5678-9012 のように 4 桁ずつ区切って表示 */
+function formatTrackingNumber(n) {
+  return n.replace(/(\d{4})(?=\d)/g, "$1-");
+}
+
+/** ヤマト運輸のお問い合わせ結果を開く（フォームを作って送る） */
+function openYamato(numbers) {
+  const form = h("form", {
+    method: "post",
+    action: YAMATO_URL,
+    target: state.settings.openInNewTab ? "_blank" : "_self",
+    rel: "noopener",
+    hidden: true,
+  },
+    h("input", { type: "hidden", name: "number00", value: "1" }),
+    ...numbers.map((n, i) => h("input", { type: "hidden", name: `number${String(i + 1).padStart(2, "0")}`, value: n })));
+  document.body.append(form);
+  form.submit();
+  form.remove();
+}
+
+function renderYamato(widget) {
+  const input = h("input", {
+    class: "input", name: "tracking", inputmode: "numeric", autocomplete: "off",
+    placeholder: t("yamato.placeholder"), "aria-label": t("yamato.label"),
+  });
+  const note = h("p", { class: "yamato__note", "aria-live": "polite" });
+  const check = () => {
+    const { valid, invalid } = parseTrackingNumbers(input.value);
+    const messages = [];
+    if (input.value.trim() && !valid.length) messages.push(t("yamato.invalid"));
+    if (invalid.length && valid.length) messages.push(t("yamato.skipped", { n: invalid.length }));
+    const suspicious = valid.filter((n) => !trackingCheckDigitOk(n));
+    if (suspicious.length) messages.push(t("yamato.checkDigit", { numbers: suspicious.map(formatTrackingNumber).join(", ") }));
+    note.textContent = messages.join(" ");
+    note.hidden = !messages.length;
+    return valid;
+  };
+  input.addEventListener("input", check);
+  check();
+
+  const form = h("form", { class: "yamato__form" },
+    input,
+    h("button", { class: "button button--primary", type: "submit" }, t("yamato.track")));
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const numbers = check();
+    if (!numbers.length) return;
+    openYamato(numbers);
+    // 最近調べた番号に残す（新しいものが上）
+    const recent = (widget.recent || []).filter((r) => !numbers.includes(r.number));
+    widget.recent = [...numbers.map((number) => ({ number, at: Date.now() })), ...recent].slice(0, YAMATO_RECENT);
+    input.value = "";
+    check();
+    commit({ rerender: false });
+    renderRecent();
+  });
+
+  const recentList = h("ul", { class: "yamato__recent", "aria-label": t("yamato.recent") });
+  const renderRecent = () => {
+    recentList.replaceChildren(...(widget.recent || []).map((r) => h("li", { class: "yamato__recent-item" },
+      h("button", {
+        type: "button", class: "yamato__recent-open", title: t("yamato.track"),
+        onclick: () => openYamato([r.number]),
+      }, formatTrackingNumber(r.number)),
+      h("button", {
+        type: "button", class: "button button--small button--ghost", title: t("yamato.remove"), "aria-label": t("yamato.remove"),
+        onclick: () => {
+          widget.recent = widget.recent.filter((x) => x.number !== r.number);
+          commit({ rerender: false });
+          renderRecent();
+        },
+      }, "×"),
+    )));
+    recentList.hidden = !recentList.children.length;
+  };
+  renderRecent();
+
+  return h("div", { class: "yamato" }, form, note, recentList);
 }
 
 function renderEmbed(widget) {
@@ -2367,6 +2479,17 @@ function renderGitHubLists({ lists }) {
  * fill：編集ダイアログに今の値を入れる（widget が null なら初期値）/ save：ダイアログの値を保存
  */
 const WIDGET_FORMS = {
+  yamato: {
+    init: (w) => { w.recent = []; },
+    normalize: (w) => {
+      w.recent = (Array.isArray(w.recent) ? w.recent : [])
+        .filter((r) => r && /^\d{10,12}$/.test(String(r.number)))
+        .map((r) => ({ number: String(r.number), at: Number(r.at) || 0 }))
+        .slice(0, YAMATO_RECENT);
+    },
+    fill: () => {},
+    save: () => {},
+  },
   weather: {
     normalize: (w) => {
       w.place = typeof w.place === "string" ? w.place : "";
