@@ -984,7 +984,7 @@ function renderLinkItem(widget, item) {
   );
   // 編集モード中はリンクを開かずに編集する
   link.addEventListener("click", (event) => {
-    if (editing || link.dataset.longPressed) {
+    if (editing || link.dataset.longPressed || Date.now() < suppressLinkClickUntil) {
       event.preventDefault();
       delete link.dataset.longPressed;
       if (editing) openLinkDialog(widget.id, item.id);
@@ -1022,6 +1022,7 @@ function addLongPress(target, onLongPress) {
     cancel();
     timer = setTimeout(() => {
       timer = null;
+      if (linkDragging) return; // 長押しから指を動かして、リンクを移動しているところ
       target.dataset.longPressed = "1"; // 指を離したときのクリック（リンクを開く）を止める
       navigator.vibrate?.(10);
       onLongPress();
@@ -2793,8 +2794,12 @@ function destroySortables() {
   sortables = [];
 }
 
+/** リンクをドラッグで動かした直後か（指を離したときのクリックで、リンクを開かないため） */
+let linkDragging = false;
+let suppressLinkClickUntil = 0;
+
 function setupSortables() {
-  if (!editing || typeof Sortable === "undefined") return;
+  if (typeof Sortable === "undefined") return;
 
   const common = {
     animation: 150,
@@ -2806,6 +2811,39 @@ function setupSortables() {
     delayOnTouchOnly: true,
     delay: 150, // スマホではスクロールと区別するため少し長押し
   };
+
+  // リンクの並べ替え（ウィジェット間の移動も可）
+  for (const list of $$(".link-list", el.dashboard)) {
+    sortables.push(new Sortable(list, {
+      ...common,
+      group: "links",
+      draggable: ".link-item",
+      filter: ".link-item__edit",
+      preventOnFilter: false,
+      // 編集モードの外：クリックでリンクを開けるよう、少し動かしてから移動を始める。
+      // スマホは長押し（0.3 秒）してから指を動かすと移動（そのまま離さずにいると編集画面）
+      ...(editing ? {} : { fallbackTolerance: 6, delay: 300 }),
+      onStart: () => { linkDragging = true; },
+      onEnd: (event) => {
+        linkDragging = false;
+        suppressLinkClickUntil = Date.now() + 400;
+        if (event.from === event.to && event.oldIndex === event.newIndex) return;
+        const all = new Map();
+        for (const w of widgets()) {
+          if (w.type === "links") for (const item of w.items) all.set(item.id, item);
+        }
+        for (const listEl of new Set([event.from, event.to])) {
+          const widget = widgets().find((w) => w.id === listEl.dataset.widgetId);
+          if (!widget) continue;
+          widget.items = $$(".link-item", listEl).map((n) => all.get(n.dataset.id)).filter(Boolean);
+        }
+        commit();
+      },
+    }));
+  }
+
+  // ここから下は編集モードのときだけ
+  if (!editing) return;
 
   // タブの並べ替え
   const tabList = $(".tabs__list", el.tabs);
@@ -2834,30 +2872,6 @@ function setupSortables() {
       commit();
     },
   }));
-
-  // リンクの並べ替え（ウィジェット間の移動も可）
-  for (const list of $$(".link-list", el.dashboard)) {
-    sortables.push(new Sortable(list, {
-      ...common,
-      group: "links",
-      draggable: ".link-item",
-      filter: ".link-item__edit",
-      preventOnFilter: false,
-      onEnd: (event) => {
-        if (event.from === event.to && event.oldIndex === event.newIndex) return;
-        const all = new Map();
-        for (const w of widgets()) {
-          if (w.type === "links") for (const item of w.items) all.set(item.id, item);
-        }
-        for (const listEl of new Set([event.from, event.to])) {
-          const widget = widgets().find((w) => w.id === listEl.dataset.widgetId);
-          if (!widget) continue;
-          widget.items = $$(".link-item", listEl).map((n) => all.get(n.dataset.id)).filter(Boolean);
-        }
-        commit();
-      },
-    }));
-  }
 
   // 写真の並べ替え
   for (const thumbs of $$(".photo-thumbs", el.dashboard)) {
