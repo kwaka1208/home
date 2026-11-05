@@ -77,7 +77,7 @@ export default {
   "typeOption.calendar": "Google Calendar (upcoming events)",
   "typeOption.mail": "Gmail (unread count)",
   "typeOption.github": "GitHub (pull requests / issues)",
-  "typeOption.yamato": "Package tracking (look up a Yamato Transport tracking number)",
+  "typeOption.yamato": "Package tracking (tracking URL from a Yamato Transport number)",
 
   /* ---------- Dashboard / widget frame ---------- */
   "dashboard.addWidget": "+ Add widget",
@@ -468,6 +468,9 @@ export default {
   "yamato.placeholder": "Tracking number (e.g. 1234-5678-9012)",
   "yamato.label": "Yamato Transport tracking number",
   "yamato.track": "Track",
+  "yamato.copy": "Copy URL",
+  "yamato.copied": "Copied the tracking URL",
+  "yamato.copyFailed": "Couldn't copy. Select the URL and copy it",
   "yamato.invalid": "Enter a 10–12 digit tracking number (separate several with spaces or commas)",
   "yamato.skipped": "{n} number(s) with the wrong length will be skipped",
   "yamato.checkDigit": "{numbers} may be wrong (please check for typos)",

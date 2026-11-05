@@ -1491,6 +1491,19 @@
   .yamato__note { margin: 0; color: var(--color-text-muted); font-size: var(--font-size-xs); }
   .yamato__note[hidden], .yamato__recent[hidden] { display: none; }
   .yamato__recent { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+  .yamato__urls { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+  .yamato__urls[hidden] { display: none; }
+  .yamato__url-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+  .yamato__url {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--widget-accent);
+    font-size: var(--font-size-xs);
+  }
+  .yamato__recent-tools { display: inline-flex; gap: 2px; }
   .yamato__recent-item {
     display: flex;
     align-items: center;
@@ -1499,11 +1512,8 @@
   }
   .yamato__recent-open {
     padding: 2px var(--space-1);
-    border: 0;
     border-radius: var(--link-radius);
-    background: none;
     color: inherit;
-    font: inherit;
     font-size: var(--font-size-sm);
     font-variant-numeric: tabular-nums;
     text-decoration: underline;

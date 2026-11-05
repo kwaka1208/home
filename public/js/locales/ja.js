@@ -77,7 +77,7 @@ export default {
   "typeOption.calendar": "Google カレンダー（予定の一覧）",
   "typeOption.mail": "Gmail（未読の件数）",
   "typeOption.github": "GitHub（プルリクエスト・Issue）",
-  "typeOption.yamato": "荷物の追跡（ヤマト運輸の送り状番号で調べる）",
+  "typeOption.yamato": "荷物の追跡（ヤマト運輸の送り状番号から追跡 URL を作る）",
 
   /* ---------- ダッシュボード・ウィジェットの枠 ---------- */
   "dashboard.addWidget": "＋ ウィジェットを追加",
@@ -468,6 +468,9 @@ export default {
   "yamato.placeholder": "送り状番号（例：1234-5678-9012）",
   "yamato.label": "ヤマト運輸の送り状番号",
   "yamato.track": "追跡",
+  "yamato.copy": "URL をコピー",
+  "yamato.copied": "追跡 URL をコピーしました",
+  "yamato.copyFailed": "コピーできませんでした。URL を選んでコピーしてください",
   "yamato.invalid": "10〜12 桁の送り状番号を入力してください（複数のときは空白かカンマで区切ります）",
   "yamato.skipped": "桁数が合わない {n} 件は除きます",
   "yamato.checkDigit": "{numbers} は番号が正しくないかもしれません（打ち間違いがないか確かめてください）",
