@@ -77,7 +77,7 @@ function rememberAppearance(data) {
  * 人ごとの設定（共有中だけ使う）：ライト / ダークと言語は、共有のダッシュボードに入れず、
  * この端末にアカウントごとに覚えておく（同じ端末を家族で使っても、人ごとに分かれる）。
  */
-export const PERSONAL_KEYS = ["mode", "language"];
+export const PERSONAL_KEYS = ["mode", "language", "autoRenewGoogle"]; // 連携の自動延長も、ポップアップが出るのは本人なので人ごと
 
 export function readPersonal() {
   if (!currentUser) return {};
