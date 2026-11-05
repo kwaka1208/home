@@ -959,9 +959,8 @@ function renderLinks(widget) {
   for (const item of widget.items) {
     list.append(renderLinkItem(widget, item));
   }
-  if (widget.items.length === 0 && !editing) {
-    return h("p", { class: "widget__empty" }, t("link.empty"));
-  }
+  // 空のときも一覧（ul）を置いておく（ほかのリンク集からドラッグで移せるように）。説明文は CSS で表示する
+  if (widget.items.length === 0) list.dataset.empty = t("link.empty");
   return list;
 }
 
@@ -2823,9 +2822,18 @@ function setupSortables() {
       // 編集モードの外：クリックでリンクを開けるよう、少し動かしてから移動を始める。
       // スマホは長押し（0.3 秒）してから指を動かすと移動（そのまま離さずにいると編集画面）
       ...(editing ? {} : { fallbackTolerance: 6, delay: 300 }),
-      onStart: () => { linkDragging = true; },
+      emptyInsertThreshold: 24, // 空のリンク集にも入れやすく
+      onStart: (event) => {
+        linkDragging = true;
+        el.root.classList.add("is-link-dragging"); // 移せるリンク集すべてに印を付ける
+        setDropTarget(event.from.closest(".widget"));
+      },
+      // 今入る先のリンク集を目立たせる
+      onMove: (event) => { setDropTarget(event.to.closest(".widget")); },
       onEnd: (event) => {
         linkDragging = false;
+        el.root.classList.remove("is-link-dragging");
+        setDropTarget(null);
         suppressLinkClickUntil = Date.now() + 400;
         if (event.from === event.to && event.oldIndex === event.newIndex) return;
         const all = new Map();
