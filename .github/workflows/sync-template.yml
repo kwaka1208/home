@@ -1,0 +1,91 @@
+# 本家（テンプレート元）の更新を取り込むための Pull Request を作る
+#
+# テンプレートから作ったリポジトリには「Sync fork」ボタンがないので、その代わりです（README「本家の更新を取り込む」）。
+# - Actions タブ → 「Sync from template」→ Run workflow で、いつでも実行できます
+# - 毎週月曜日にも自動で確認し、更新があれば Pull Request を作ります（作るだけで、マージはしません）
+#
+# 事前に、リポジトリの Settings → Actions → General → Workflow permissions で
+# 「Read and write permissions」と「Allow GitHub Actions to create and approve pull requests」を有効にしてください。
+name: Sync from template
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 0 * * 1" # 毎週月曜日 9:17（日本時間）
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    # テンプレートとして公開しているリポジトリ（本家）では動かさない
+    if: ${{ !github.event.repository.is_template }}
+    runs-on: ubuntu-latest
+    env:
+      UPSTREAM: https://github.com/kwaka1208/personal-dashboard.git # 本家（テンプレート元）
+      BRANCH: update-from-template
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 本家の最新を取ってくる
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "$UPSTREAM"
+          git fetch --no-tags upstream main
+
+      - name: 取り込むものがあるか確かめる
+        id: check
+        run: |
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "本家の更新はすべて取り込み済みです。"
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 取り込む（firebase-config.js などは自分の内容を残す）
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          git checkout -B "$BRANCH"
+          # 初回はテンプレートと履歴がつながっていないので --allow-unrelated-histories が必要（2 回目以降も害はない）
+          if ! git merge --no-ff --allow-unrelated-histories -m "本家（テンプレート）の最新版を取り込み" upstream/main; then
+            # 自分専用の内容を書くファイルは、衝突したら自分の内容を残す
+            for f in public/js/firebase-config.js firestore.rules public/css/custom.css public/addons/index.js public/default-dashboard.json; do
+              if git diff --name-only --diff-filter=U | grep -qx "$f"; then
+                git checkout --ours -- "$f" && git add -- "$f"
+                echo "::notice::$f は衝突したため、自分の内容を残しました（本家の変更点は README と見比べてください）"
+              fi
+            done
+            if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+              echo "::error::次のファイルで本家の変更と自分の変更が衝突しました。README「本家の更新を取り込む」の手元で取り込む方法で直してください："
+              git diff --name-only --diff-filter=U
+              exit 1
+            fi
+            git commit --no-edit
+          fi
+          # ワークフロー（.github/workflows）の変更は、この仕組みの権限では push できない
+          if [ -n "$(git diff --name-only "origin/${{ github.event.repository.default_branch }}" HEAD -- .github/workflows)" ]; then
+            echo "::error::本家で .github/workflows の中が変わったため、自動では取り込めません。README「本家の更新を取り込む」の手元で取り込む方法か、GitHub の画面での方法で取り込んでください。"
+            exit 1
+          fi
+          git push --force-with-lease origin "$BRANCH"
+
+      - name: Pull Request を作る（すでにあれば更新するだけ）
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --head "$BRANCH" --base "${{ github.event.repository.default_branch }}" \
+              --title "本家（テンプレート）の更新を取り込む" \
+              --body "本家（${UPSTREAM%.git}）の最新の main を取り込みます。
+
+          - 中身を確認して **Merge pull request** を押すと、取り込まれて GitHub Pages に公開されます
+          - \`public/js/firebase-config.js\` など自分専用のファイルは、衝突した場合は自分の内容を残しています
+          - 本家で \`firestore.rules\` が変わったときは、Firebase コンソールのルールにも反映してください
+
+          このプルリクエストは「Sync from template」ワークフローが作りました。"
+          fi

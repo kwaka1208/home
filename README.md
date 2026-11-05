@@ -317,8 +317,47 @@ Google カレンダー・Gmail のウィジェットは、ダッシュボード�
 
 ## 本家の更新を取り込む
 
-テンプレートから作ったリポジトリは本家と履歴がつながっていないため、フォークのような
-「Sync fork」ボタンはありません。更新を取り込みたいときは、手元に clone したリポジトリで次を実行します。
+テンプレートから作ったリポジトリは本家と履歴がつながっていないため、フォークのような「Sync fork」ボタンはありません。
+代わりに、次のどちらかの方法で取り込みます。
+
+| 方法 | 向いている人 |
+|---|---|
+| **A. ボタンで取り込む**（GitHub Actions が Pull Request を作る） | ふだんはこちら。git のコマンドを使わずに、GitHub の画面だけで済みます |
+| **B. 手元の git で取り込む** | A で「衝突しました」と出たとき、自分でファイルを直したいとき |
+
+どちらの方法でも、Firestore のデータ（ダッシュボードの中身）はそのまま残ります。
+
+### A. ボタンで取り込む（おすすめ）
+
+本家の `.github/workflows/sync-template.yml`（「Sync from template」ワークフロー）を使います。
+実行すると、本家の最新の `main` を取り込む Pull Request を自動で作ります。中身を見て **Merge pull request** を押せば、取り込みが完了して公開し直されます。
+
+**最初に 1 回だけ準備すること**
+
+1. 自分のリポジトリの **Settings → Actions → General → Workflow permissions** で、次の 2 つを設定して **Save** を押します。
+   - **Read and write permissions** を選ぶ
+   - **Allow GitHub Actions to create and approve pull requests** にチェックを入れる
+2. 自分のリポジトリに `.github/workflows/sync-template.yml` がなければ、追加します（このファイルを入れる前にテンプレートから作った場合）。
+   1. 本家の [sync-template.yml](https://github.com/kwaka1208/personal-dashboard/blob/main/.github/workflows/sync-template.yml) を開き、右上の **コピー** ボタンで中身をコピーします。
+   2. 自分のリポジトリで **Add file → Create new file** を押し、名前に `.github/workflows/sync-template.yml` と入力して、中身を貼り付けて **Commit changes** を押します。
+
+**取り込むとき**
+
+1. 自分のリポジトリの **Actions** タブ → 左の **Sync from template** → **Run workflow** を押します。
+   （毎週月曜日の朝にも自動で確認し、更新があれば Pull Request を作ります。作るだけで、勝手にマージはしません。）
+2. 1 分ほどすると **Pull requests** タブに「本家（テンプレート）の更新を取り込む」ができます。中身を確認して **Merge pull request** を押します。
+3. マージすると、GitHub Pages に自動で公開し直されます。
+
+- 本家の更新がなければ、何もせずに終わります。
+- `firebase-config.js`・`custom.css`・`public/addons/index.js` など自分専用のファイルは、本家の変更と衝突した場合、**自分の内容を残します**。
+  衝突しなければ、本家で増えた設定（例：`SHARED_DASHBOARD`）は自動で書き足されます。
+- それ以外のファイルで衝突したときや、本家で `.github/workflows` の中が変わったとき（GitHub Actions の権限では書き換えられないため）は、
+  ワークフローが赤い ✗ で止まり、理由が表示されます。その場合は **B** で取り込んでください。
+- 本家で `firestore.rules` が変わったときは、Firebase コンソールのルールにも反映してください（自分のメールアドレスの部分は残します）。
+
+### B. 手元の git で取り込む
+
+手元に clone したリポジトリで次を実行します。
 
 最初の 1 回だけ、本家を `upstream` という名前で登録します。
 
@@ -342,12 +381,12 @@ git merge upstream/main --allow-unrelated-histories
 
 最初の取り込みでは、あなたが変更したファイル（`firebase-config.js` など）で衝突（コンフリクト）が出ることがあります。
 `firebase-config.js` は自分の値を残してください。衝突したファイルを直したら `git add` してから `git commit` し、
-GitHub に push すると自動で公開し直されます。Firestore のデータはそのまま残ります。
+GitHub に push すると自動で公開し直されます。
 
-本家で `firestore.rules` が変わったときは、Firebase コンソールのルールにも反映してください
-（自分のメールアドレスの部分は残します）。
+### 衝突を減らすコツ
 
 カスタマイズを `custom.css` と `themes.css` への追記、自作ウィジェットを `public/addons/`（アドオン）に留めておくと、衝突しにくくなります。
+`public/js/app.js` などの本体のファイルを直接書き換えると、本家の更新のたびに衝突しやすくなります。
 
 ---
 
