@@ -69,7 +69,26 @@ export function readAppearance() {
 }
 
 function rememberAppearance(data) {
-  writeAppearance(data?.settings);
+  // 共有中は、ライト / ダークと言語は共有のものではなく、この人の設定を覚えておく
+  writeAppearance({ ...data?.settings, ...(isShared ? readPersonal() : {}) });
+}
+
+/*
+ * 人ごとの設定（共有中だけ使う）：ライト / ダークと言語は、共有のダッシュボードに入れず、
+ * この端末にアカウントごとに覚えておく（同じ端末を家族で使っても、人ごとに分かれる）。
+ */
+export const PERSONAL_KEYS = ["mode", "language"];
+
+export function readPersonal() {
+  if (!currentUser) return {};
+  return readLocal(`personal:${currentUser.uid}`) || {};
+}
+
+export function writePersonal(settings) {
+  if (!currentUser) return;
+  const values = Object.fromEntries(PERSONAL_KEYS.map((k) => [k, settings?.[k]]).filter(([, v]) => v != null));
+  writeLocal(`personal:${currentUser.uid}`, values);
+  writeAppearance({ ...(readAppearance() || {}), ...values });
 }
 
 /** 見た目と言語の設定だけを、この端末に覚えておく（ログイン前の画面や、ライト / ダークの切り替えで使う） */

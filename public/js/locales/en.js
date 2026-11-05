@@ -382,6 +382,7 @@ export default {
   "settings.name": "Dashboard name",
   "settings.language": "Language / 言語",
   "settings.languageAuto": "Auto (browser setting) / ブラウザに合わせる",
+  "settings.personalHint": "This dashboard is shared, but this setting is yours only (it doesn't affect others)",
   "settings.mode": "Color scheme",
   "settings.modeAuto": "Match the OS",
   "settings.modeLight": "Light",

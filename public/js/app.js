@@ -510,7 +510,7 @@ async function saveNow() {
   setStatus(t("status.saving"));
   saving = true;
   try {
-    const result = await storage.save(state, storageMode, mergeDashboards);
+    const result = await storage.save(forSaving(state), storageMode, mergeDashboards);
     saving = false;
     setStatus(storageMode === "remote" ? t("status.saved") : t("status.savedLocal"));
     // ほかの人（端末）の変更とまとめて保存したときは、まとめた内容を画面にも反映する
@@ -603,9 +603,10 @@ function applyRemote(data, json, { merged = false } = {}) {
     return;
   }
   pendingRemote = null;
-  if (key(data) !== key(state)) {
+  const next = withPersonal(normalize(data));
+  if (key(next) !== key(state)) {
     const current = activePageId;
-    state = normalize(data);
+    state = next;
     if (state.pages.some((p) => p.id === current)) activePageId = current;
     else pickInitialPage();
     render();
@@ -614,6 +615,33 @@ function applyRemote(data, json, { merged = false } = {}) {
   storage.setBase(json);
 
   function key(v) { return JSON.stringify(v); }
+}
+
+/* ------------------------------------------------------------------ */
+/* 人ごとの設定（共有中）：ライト / ダークと言語                             */
+/* ------------------------------------------------------------------ */
+
+/** 共有のダッシュボードを使っているか（このときライト / ダークと言語は人ごと） */
+function isPersonalMode() {
+  return storage.isShared && storageMode === "remote";
+}
+
+/** 共有のデータに入っている、ライト / ダークと言語の値（保存するときは、これを書き戻す） */
+let sharedPersonal = {};
+
+/** 読み込んだ（共有の）データに、この人のライト / ダークと言語を当てはめる */
+function withPersonal(data) {
+  if (!isPersonalMode()) return data;
+  sharedPersonal = Object.fromEntries(storage.PERSONAL_KEYS.map((k) => [k, data.settings[k]]));
+  const mine = storage.readPersonal();
+  for (const k of storage.PERSONAL_KEYS) if (mine[k] != null) data.settings[k] = mine[k];
+  return data;
+}
+
+/** 保存する内容：共有中は、ライト / ダークと言語を共有の値に戻す（この人の設定は共有しない） */
+function forSaving(data) {
+  if (!isPersonalMode()) return data;
+  return { ...data, settings: { ...data.settings, ...sharedPersonal } };
 }
 
 /** 変更を反映：描き直して保存 */
@@ -691,7 +719,8 @@ function toggleMode() {
   if (state) {
     state.settings.mode = mode;
     applySettings();
-    commit({ rerender: false });
+    if (isPersonalMode()) storage.writePersonal(state.settings);
+    else commit({ rerender: false });
   } else {
     const next = { ...settings, mode };
     storage.writeAppearance(next);
@@ -3200,6 +3229,7 @@ el.settingsOpen.addEventListener("click", () => {
   const f = el.settingsForm.elements;
   f.title.value = state.title;
   f.language.value = state.settings.language;
+  for (const hint of $$("[data-personal-hint]", el.settingsForm)) hint.hidden = !isPersonalMode();
   f.mode.value = state.settings.mode;
   f.preset.value = state.settings.preset;
   f.density.value = state.settings.density;
@@ -3239,6 +3269,7 @@ el.settingsDialog.addEventListener("close", () => {
       useFavicons: f.useFavicons.checked,
       autoRenewGoogle: f.autoRenewGoogle.checked,
     };
+    if (isPersonalMode()) storage.writePersonal(state.settings);
     commit();
   } else {
     applySettings(); // プレビューを元に戻す
@@ -3263,7 +3294,7 @@ el.importInput.addEventListener("change", async () => {
     const data = JSON.parse(await file.text());
     if (!Array.isArray(data.pages) && !Array.isArray(data.widgets)) throw new Error(t("settings.importNoWidgets"));
     if (!confirm(t("settings.importConfirm"))) return;
-    state = normalize(data);
+    state = withPersonal(normalize(data));
     pickInitialPage();
     el.settingsDialog.close("imported");
     commit();
@@ -3275,7 +3306,7 @@ el.importInput.addEventListener("change", async () => {
 el.resetButton.addEventListener("click", async () => {
   if (!confirm(t("settings.resetConfirm"))) return;
   try {
-    state = normalize(await storage.loadDefault());
+    state = withPersonal(normalize(await storage.loadDefault()));
     pickInitialPage();
     el.settingsDialog.close("reset");
     commit();
@@ -3334,9 +3365,9 @@ async function openDashboard(user) {
   setStatus(t("common.loading"));
   try {
     const result = await storage.load();
-    state = normalize(result.data);
-    pickInitialPage();
     storageMode = result.mode;
+    state = withPersonal(normalize(result.data));
+    pickInitialPage();
   } catch (err) {
     // 許可がない・設定漏れなど。データを上書きしないよう、画面は出さない
     showSignedOut();

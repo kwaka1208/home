@@ -382,6 +382,7 @@ export default {
   "settings.name": "ダッシュボードの名前",
   "settings.language": "言語 / Language",
   "settings.languageAuto": "ブラウザの設定に合わせる / Auto",
+  "settings.personalHint": "共有中ですが、この設定はあなただけのものです（ほかの人には影響しません）",
   "settings.mode": "配色",
   "settings.modeAuto": "OS の設定に合わせる",
   "settings.modeLight": "ライト",
